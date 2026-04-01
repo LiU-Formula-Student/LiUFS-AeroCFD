@@ -4,11 +4,10 @@ Simple test to verify the application components work correctly.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add app to path
-sys.path.insert(0, str(Path(__file__).parent / "app"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 def test_imports():
     """Test that all modules can be imported."""
