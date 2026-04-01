@@ -12,7 +12,7 @@ from .packager import build_liufs
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="liufs-compressor",
+        prog="aerocfd",
         description="Build a .liufs archive from a CFD simulation directory.",
     )
     parser.add_argument(
