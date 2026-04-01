@@ -2,6 +2,7 @@
 Main application window for the .liufs viewer.
 """
 
+import platform
 import sys
 import tempfile
 from pathlib import Path
@@ -11,12 +12,13 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QSplitter, QMessageBox, QFileDialog, QComboBox
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, qVersion
 from PySide6.QtGui import QKeySequence, QShortcut, QPixmap
 
 from .liufs_handler import LiufsFileHandler
 from .file_tree import FileTreeWidget
 from .video_player import VideoPlayer
+from .version import APP_VERSION
 
 
 class ViewerWindow(QMainWindow):
@@ -135,6 +137,32 @@ class ViewerWindow(QMainWindow):
         exit_action = file_menu.addAction("E&xit")
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
+
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+
+        info_action = help_menu.addAction("&Info")
+        info_action.triggered.connect(self.show_app_info)
+
+    def show_app_info(self):
+        """Show application and environment information in a popup dialog."""
+        sim_name = "No file loaded"
+        if self.current_liufs_handler:
+            try:
+                sim_name = self.current_liufs_handler.get_simulation_name()
+            except Exception:
+                sim_name = "Unknown"
+
+        info_text = (
+            f"Application: LiU FS Simulation Viewer\n"
+            f"Version: {APP_VERSION}\n"
+            f"Current Simulation: {sim_name}\n"
+            f"Python: {platform.python_version()}\n"
+            f"Qt: {qVersion()}\n"
+            f"Platform: {platform.system()} {platform.release()}"
+        )
+
+        QMessageBox.information(self, "Application Info", info_text)
     
     def setup_shortcuts(self):
         """Setup keyboard shortcuts."""
