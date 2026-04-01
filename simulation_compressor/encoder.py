@@ -10,15 +10,30 @@ from pathlib import Path
 import cv2
 
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
+
+
+def is_image_file(path: str | Path) -> bool:
+    return Path(path).suffix.lower() in IMAGE_EXTENSIONS
+
+
+def count_image_files(data_dir: str | Path) -> int:
+    root = Path(data_dir)
+    count = 0
+    for entry in root.iterdir():
+        if entry.is_file() and is_image_file(entry):
+            count += 1
+    return count
+
+
 def find_3d_images(data_dir):
-    image_extensions = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
     images = []
 
     for filename in sorted(os.listdir(data_dir)):
         file_path = Path(data_dir) / filename
         if not file_path.is_file():
             continue
-        if file_path.suffix.lower() not in image_extensions:
+        if not is_image_file(file_path):
             continue
         images.append(str(file_path))
 
@@ -41,6 +56,7 @@ def convert_images_to_webp(image_paths, output_dir, quality=80, reporter=None):
 
     for image_path in image_paths:
         source = Path(image_path)
+        reporter.advance_progress(1)
         if not source.exists() or not source.is_file():
             reporter.warn(f"Skipping missing file: {source}")
             continue
@@ -71,10 +87,13 @@ def find_cfd_images(data_dir):
     images = []
     for plane, pattern in FILE_MAPPING.items():
         for filename in os.listdir(data_dir):
-            match = re.match(pattern, filename)
+            source_path = Path(data_dir) / filename
+            if not source_path.is_file():
+                continue
+            match = re.match(pattern, filename, flags=re.IGNORECASE)
             if match:
                 index = int(match.group(1))  # Extract the captured number
-                images.append(CFDImage(name=filename, path=os.path.join(data_dir, filename), plane=plane, index=index))
+                images.append(CFDImage(name=filename, path=str(source_path), plane=plane, index=index))
     return images
 
 
@@ -136,6 +155,7 @@ def build_video_from_images(images, output_dir="videos", fps=12, extension="mp4"
 
         result = subprocess.run(command, capture_output=True, text=True)
         os.unlink(list_path)
+        reporter.advance_progress(len(plane_images))
 
         if result.returncode != 0:
             reporter.error(

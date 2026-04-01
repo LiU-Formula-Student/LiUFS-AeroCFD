@@ -72,22 +72,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.webp_quality < 0 or args.webp_quality > 100:
         parser.error("--webp-quality must be between 0 and 100")
 
+    reporter = None
     try:
         console = Console()
         reporter = RichReporter(console)
-        with console.status("[bold dark_orange]Building .liufs archive..."):
-            result = build_liufs(
-                source_dir=source,
-                output_file=output,
-                fps=args.fps,
-                extension=args.extension,
-                webp_quality=args.webp_quality,
-                include_unknown=args.include_unknown,
-                reporter=reporter,
-            )
+        result = build_liufs(
+            source_dir=source,
+            output_file=output,
+            fps=args.fps,
+            extension=args.extension,
+            webp_quality=args.webp_quality,
+            include_unknown=args.include_unknown,
+            reporter=reporter,
+        )
     except Exception as exc:
         print(f"Failed to build .liufs archive: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if reporter is not None:
+            reporter.close()
 
     print(f"Created archive: {result}")
     return 0

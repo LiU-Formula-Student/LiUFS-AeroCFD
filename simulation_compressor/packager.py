@@ -7,7 +7,14 @@ import shutil
 import tempfile
 import zipfile
 
-from .encoder import build_video_from_images, find_cfd_images, find_3d_images, convert_images_to_webp
+from .encoder import (
+    build_video_from_images,
+    find_cfd_images,
+    find_3d_images,
+    convert_images_to_webp,
+    count_image_files,
+    is_image_file,
+)
 from .scanner import build_structure
 from .reporting import BaseReporter, NullReporter
 
@@ -19,18 +26,41 @@ def _to_posix(path: Path) -> str:
     return path.as_posix()
 
 
-def _copy_files(src_dir: Path, dst_dir: Path) -> list[str]:
+def _copy_files(src_dir: Path, dst_dir: Path, reporter: BaseReporter | None = None) -> tuple[list[str], int]:
     dst_dir.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
+    image_attempts = 0
 
     for item in sorted(src_dir.iterdir()):
         if not item.is_file():
             continue
+        if is_image_file(item):
+            image_attempts += 1
+            if reporter is not None:
+                reporter.advance_progress(1)
         target = dst_dir / item.name
         shutil.copy2(item, target)
         copied.append(item.name)
 
-    return copied
+    return copied, image_attempts
+
+
+def _count_total_images(structure_node: dict, *, include_unknown: bool) -> int:
+    if _is_leaf(structure_node):
+        leaf_type = structure_node.get("type", "unknown")
+        leaf_path = Path(structure_node["path"])
+        if leaf_type == "cfd_images":
+            return len(find_cfd_images(str(leaf_path)))
+        if leaf_type == "3d_views":
+            return len(find_3d_images(str(leaf_path)))
+        if leaf_type == "unknown" and include_unknown:
+            return count_image_files(leaf_path)
+        return 0
+
+    total = 0
+    for child in structure_node.values():
+        total += _count_total_images(child, include_unknown=include_unknown)
+    return total
 
 
 def _process_leaf(
@@ -91,12 +121,13 @@ def _process_leaf(
         manifest_node["skipped"] = True
         manifest_node["reason"] = "unknown folder type"
         if include_unknown:
-            copied = _copy_files(src_dir, package_root)
+            copied, image_attempts = _copy_files(src_dir, package_root, reporter=reporter)
             manifest_node["files"] = [
                 _to_posix((package_root / name).relative_to(package_root.parent.parent))
                 for name in copied
             ]
             manifest_node["copied_unknown_files"] = len(copied)
+            manifest_node["unknown_image_attempts"] = image_attempts
 
 
 def _build_manifest_tree(
@@ -173,6 +204,8 @@ def build_liufs(
     reporter.start_step(f"Scanning simulation directory: {source_path}")
     structure = build_structure(str(source_path), reporter=reporter)
     reporter.finish_step("Directory scan complete")
+    total_images = _count_total_images(structure, include_unknown=include_unknown)
+    reporter.set_total(total_images, description="Processing CFD and 3D images")
 
     if output_file is None:
         output_path = source_path.with_suffix(".liufs")
@@ -216,6 +249,7 @@ def build_liufs(
             include_unknown=include_unknown,
             reporter=reporter
         )
+        reporter.complete_progress("Image processing complete")
         reporter.finish_step("Package contents built")
 
         reporter.start_step("Writing manifest.json")
