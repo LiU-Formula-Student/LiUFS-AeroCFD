@@ -8,19 +8,59 @@ This package scans a simulation directory tree, classifies leaf folders, and the
 - Writes a `manifest.json` describing packaged content
 - Produces a ZIP-based `.liufs` archive
 
+## Installation
+
+### As a standalone CLI tool
+
+Install from a wheel file (available in GitHub releases):
+
+```bash
+pip install aerocfd-0.1.0-py3-none-any.whl
+```
+
+Or from git:
+
+```bash
+pip install git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor
+```
+
+### As a package dependency
+
+Add to your `requirements.txt`:
+
+```
+aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor
+```
+
+Or in `pyproject.toml`:
+
+```toml
+dependencies = [
+  "aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor",
+]
+```
+
 ## Requirements
 
 - Python 3.12+
 - `ffmpeg` available on `PATH`
-- Python dependencies from the project root:
+- Dependencies automatically installed: `opencv-python`, `rich`
+
+For development, install with optional dev dependencies from the project root:
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ## CLI Usage
 
-Run from the project root:
+After installation, use either:
+
+```bash
+aerocfd <source_dir> [options]
+```
+
+Or from the project root (if not installed using the editable install):
 
 ```bash
 python -m simulation_compressor <source_dir> [options]
@@ -37,7 +77,7 @@ python -m simulation_compressor <source_dir> [options]
 ### Example
 
 ```bash
-python -m simulation_compressor /path/to/ER26-BL-0001 \
+aerocfd /path/to/ER26-BL-0001 \
   --output /path/to/ER26-BL-0001.liufs \
   --fps 12 \
   --extension mp4 \
