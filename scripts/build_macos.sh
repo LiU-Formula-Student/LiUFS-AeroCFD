@@ -17,6 +17,6 @@ rm -rf build dist
 pyinstaller viewer.spec
 
 mkdir -p dist
-ditto -c -k --sequesterRsrc --keepParent dist/liufs-viewer.app dist/liufs-viewer-macos.zip
+ditto -c -k --sequesterRsrc --keepParent dist/liufs-viewer dist/liufs-viewer-macos.zip
 
 echo "Built artifact: dist/liufs-viewer-macos.zip"
