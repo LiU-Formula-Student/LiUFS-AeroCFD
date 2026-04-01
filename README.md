@@ -137,6 +137,61 @@ Extract ZIP → Run .exe
 
 ---
 
+## 📦 Simulation Compressor Distribution
+
+The `simulation_compressor` CLI tool is packaged as a standalone Python package that can be installed and integrated into other applications.
+
+### For End Users
+
+Download the wheel (`.whl`) file from the [GitHub Releases](../../releases) page:
+
+```bash
+pip install aerocfd-0.1.0-py3-none-any.whl
+```
+
+Then run:
+
+```bash
+aerocfd /path/to/simulation/folder -o output.liufs
+```
+
+### For Developers
+
+Include in your project's `requirements.txt`:
+
+```
+aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor
+```
+
+Or in `pyproject.toml`:
+
+```toml
+dependencies = [
+    "aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor",
+]
+```
+
+Then use in your code:
+
+```python
+from simulation_compressor.packager import build_liufs
+from simulation_compressor.reporting import RichReporter
+from rich.console import Console
+
+console = Console()
+reporter = RichReporter(console)
+
+archive_path = build_liufs(
+    source_dir="/path/to/simulation",
+    output_file="output.liufs",
+    reporter=reporter,
+)
+```
+
+See [simulation_compressor/README.md](simulation_compressor/README.md) for full documentation.
+
+---
+
 ## ⚙️ Development
 
 ### Requirements
