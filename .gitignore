@@ -1,9 +1,17 @@
 dist/
 build/
 venv/
+.venv/
 data/
 videos/
 __pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+*.egg-info/
+pip-wheel-metadata/
 0_research/
 
 *.liufs
