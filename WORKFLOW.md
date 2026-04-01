@@ -92,3 +92,30 @@ Windows (PowerShell):
 
 - `ffmpeg` is required for compressor-related functionality and should be available on build/runtime environments where needed.
 - If builds fail, first check workflow logs for dependency or platform-specific packaging errors.
+
+## Code Signing (optional, recommended)
+
+You can configure signing secrets in GitHub so release artifacts are signed automatically.
+
+### Windows signing secrets
+
+- `WINDOWS_SIGN_CERT_BASE64` (base64-encoded `.pfx` certificate)
+- `WINDOWS_SIGN_CERT_PASSWORD`
+
+Behavior:
+- If both secrets are present, `scripts/build_windows.ps1` signs `liufs-viewer.exe` with `signtool`.
+- If not present, the build still succeeds but produces an unsigned artifact.
+
+### macOS signing and notarization secrets
+
+- `APPLE_CERT_BASE64` (base64-encoded Developer ID `.p12` certificate)
+- `APPLE_CERT_PASSWORD`
+- `APPLE_SIGN_IDENTITY` (for example `Developer ID Application: Your Name (TEAMID)`)
+- `APPLE_TEAM_ID`
+- `APPLE_ID` (Apple account email used for notarization)
+- `APPLE_APP_SPECIFIC_PASSWORD`
+
+Behavior:
+- If signing secrets are present, `scripts/build_macos.sh` signs the `.app` bundle.
+- If notarization secrets are also present, the workflow submits the ZIP for notarization and staples the app.
+- If missing, the build still succeeds but artifact is unsigned/unnotarized.
