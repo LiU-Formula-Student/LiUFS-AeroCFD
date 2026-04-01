@@ -5,7 +5,7 @@ project_root = Path(SPECPATH)
 
 
 a = Analysis(
-	['app/main.py'],
+	['viewer_entry.py'],
 	pathex=[str(project_root)],
 	binaries=[],
 	datas=[],
