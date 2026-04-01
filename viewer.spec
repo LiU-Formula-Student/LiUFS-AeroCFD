@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 
 project_root = Path(SPECPATH)
@@ -45,3 +46,10 @@ coll = COLLECT(
 	upx_exclude=[],
 	name='liufs-viewer',
 )
+
+if sys.platform == 'darwin':
+	bundle = BUNDLE(
+		coll,
+		name='liufs-viewer.app',
+		bundle_identifier='se.liufs.viewer',
+	)
