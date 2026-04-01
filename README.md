@@ -23,7 +23,7 @@ This project solves that by:
 
 ### Storage & Compression
 - Convert cutplane image sequences → **video (inter-frame compression)**
-- Reduce storage by up to **~1000x** (depending on data)
+- Reduce storage by up to **~100x** (depending on data)
 - Collapse thousands of files into **one `.liufs` file**
 
 ### Simulation Packaging
@@ -189,12 +189,8 @@ GitHub Actions pipeline:
 
 Observed example:
 
-- 4.2 GB images → 4.2 MB video
-- ~1000x reduction
-
-Projected:
-
-- 7 TB → ~7–100 GB
+- 275 GB images → 4.8 GB compressed
+- ~60x reduction
 
 ---
 
