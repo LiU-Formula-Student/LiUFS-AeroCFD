@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import zipfile
 
-from .encoder import build_video_from_images, find_cfd_images
+from .encoder import build_video_from_images, find_cfd_images, find_3d_images, convert_images_to_webp
 from .scanner import build_structure
 from .reporting import BaseReporter, NullReporter
 
@@ -40,6 +40,7 @@ def _process_leaf(
     *,
     fps: int,
     extension: str,
+    webp_quality: int,
     include_unknown: bool,
     reporter: BaseReporter,
 ) -> None:
@@ -73,12 +74,18 @@ def _process_leaf(
             manifest_node["warning"] = "No videos created"
 
     elif leaf_type == "3d_views":
-        copied = _copy_files(src_dir, package_root)
+        image_paths = find_3d_images(str(src_dir))
+        converted_files = convert_images_to_webp(
+            image_paths,
+            output_dir=str(package_root),
+            quality=webp_quality,
+            reporter=reporter,
+        )
         manifest_node["files"] = [
-            _to_posix((package_root / name).relative_to(package_root.parent.parent))
-            for name in copied
+            _to_posix(Path(file_path).relative_to(package_root.parent.parent))
+            for file_path in converted_files
         ]
-        manifest_node["file_count"] = len(copied)
+        manifest_node["file_count"] = len(converted_files)
 
     else:
         manifest_node["skipped"] = True
@@ -99,6 +106,7 @@ def _build_manifest_tree(
     *,
     fps: int,
     extension: str,
+    webp_quality: int,
     include_unknown: bool,
     reporter: BaseReporter,
 ) -> None:
@@ -109,6 +117,7 @@ def _build_manifest_tree(
             manifest_node,
             fps=fps,
             extension=extension,
+            webp_quality=webp_quality,
             include_unknown=include_unknown,
             reporter=reporter,
         )
@@ -125,6 +134,7 @@ def _build_manifest_tree(
             package_root / child_name,
             fps=fps,
             extension=extension,
+            webp_quality=webp_quality,
             include_unknown=include_unknown,
             reporter=reporter
         )
@@ -151,6 +161,7 @@ def build_liufs(
     *,
     fps: int = 12,
     extension: str = "mp4",
+    webp_quality: int = 80,
     include_unknown: bool = False,
     reporter: BaseReporter | None = None,
 ) -> Path:
@@ -186,6 +197,7 @@ def build_liufs(
             "builder": {
                 "fps": fps,
                 "video_extension": extension,
+                "webp_quality": webp_quality,
                 "include_unknown": include_unknown,
             },
             "runs": {},
@@ -200,6 +212,7 @@ def build_liufs(
             runs_root,
             fps=fps,
             extension=extension,
+            webp_quality=webp_quality,
             include_unknown=include_unknown,
             reporter=reporter
         )

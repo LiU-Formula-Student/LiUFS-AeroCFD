@@ -5,6 +5,66 @@ import os
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
+
+import cv2
+
+
+def find_3d_images(data_dir):
+    image_extensions = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
+    images = []
+
+    for filename in sorted(os.listdir(data_dir)):
+        file_path = Path(data_dir) / filename
+        if not file_path.is_file():
+            continue
+        if file_path.suffix.lower() not in image_extensions:
+            continue
+        images.append(str(file_path))
+
+    return images
+
+
+def convert_images_to_webp(image_paths, output_dir, quality=80, reporter=None):
+    reporter = reporter or NullReporter()
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    created_files = []
+
+    reporter.start_step(
+        f"Converting {len(image_paths)} images to WebP",
+        image_count=len(image_paths),
+        output_dir=str(output_path),
+        quality=quality,
+    )
+
+    for image_path in image_paths:
+        source = Path(image_path)
+        if not source.exists() or not source.is_file():
+            reporter.warn(f"Skipping missing file: {source}")
+            continue
+
+        reporter.advance(f"Converting {source.name} to WebP")
+        target = output_path / f"{source.stem}.webp"
+
+        image = cv2.imread(str(source), cv2.IMREAD_UNCHANGED)
+        if image is None:
+            reporter.warn(f"Skipping unreadable image: {source.name}")
+            continue
+
+        success = cv2.imwrite(str(target), image, [cv2.IMWRITE_WEBP_QUALITY, int(quality)])
+        if not success:
+            reporter.warn(f"Failed to convert image: {source.name}")
+            continue
+
+        created_files.append(str(target))
+
+    reporter.finish_step(
+        f"Finished WebP conversion in {output_path}",
+        created_count=len(created_files),
+    )
+    return created_files
 
 
 def find_cfd_images(data_dir):

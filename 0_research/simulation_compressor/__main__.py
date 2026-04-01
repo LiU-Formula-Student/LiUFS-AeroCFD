@@ -36,6 +36,12 @@ def create_parser() -> argparse.ArgumentParser:
         help="Video file extension to use inside the archive. Default: mp4.",
     )
     parser.add_argument(
+        "--webp-quality",
+        type=int,
+        default=80,
+        help="WebP quality for 3d view image compression (0-100). Default: 80.",
+    )
+    parser.add_argument(
         "--include-unknown",
         action="store_true",
         help="Copy files from directories with unknown type into the archive.",
@@ -63,6 +69,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.fps <= 0:
         parser.error("--fps must be greater than 0")
 
+    if args.webp_quality < 0 or args.webp_quality > 100:
+        parser.error("--webp-quality must be between 0 and 100")
+
     try:
         console = Console()
         reporter = RichReporter(console)
@@ -72,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_file=output,
                 fps=args.fps,
                 extension=args.extension,
+                webp_quality=args.webp_quality,
                 include_unknown=args.include_unknown,
                 reporter=reporter,
             )
