@@ -1,3 +1,4 @@
+from .reporting import NullReporter
 from . import FILE_MAPPING, CFDImage
 import re
 import os
@@ -17,22 +18,37 @@ def find_cfd_images(data_dir):
     return images
 
 
-def build_video_from_images(images, output_dir="videos", fps=12, extension="mp4"):
+def build_video_from_images(images, output_dir="videos", fps=12, extension="mp4", reporter=None):
+    reporter = reporter or NullReporter()
     os.makedirs(output_dir, exist_ok=True)
 
     if shutil.which("ffmpeg") is None:
-        raise RuntimeError("Could not create videos: ffmpeg is not installed or not available in PATH.")
+        reporter.error("Could not create videos: ffmpeg is not installed or not available in PATH.")
+        return []
 
     created_files = []
     planes = sorted(set(img.plane for img in images))
+
+    reporter.start_step(
+        f"Encoding {len(planes)} plane videos",
+        plane_count=len(planes),
+        image_count=len(images),
+        output_dir=output_dir,
+    )
+
     for plane in planes:
         plane_images = sorted([img for img in images if img.plane == plane], key=lambda x: x.index)
         if not plane_images:
             continue
 
+        reporter.advance(
+            f"Building video for plane {plane} with {len(plane_images)} images",
+            plane=plane,
+            image_count=len(plane_images),
+        )
+
         output_path = os.path.join(output_dir, f"{plane}.{extension}")
 
-        # ffmpeg concat demuxer input list.
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as list_file:
             list_path = list_file.name
             for image in plane_images:
@@ -62,8 +78,17 @@ def build_video_from_images(images, output_dir="videos", fps=12, extension="mp4"
         os.unlink(list_path)
 
         if result.returncode != 0:
-            raise RuntimeError(f"Failed to create video for plane {plane}: {result.stderr.strip()}")
+            reporter.error(
+                f"Skipping plane {plane}: ffmpeg failed",
+                plane=plane,
+                stderr=result.stderr.strip() if result.stderr else "",
+            )
+            continue
 
         created_files.append(output_path)
 
+    reporter.finish_step(
+        f"Finished encoding videos in {output_dir}",
+        created_count=len(created_files),
+    )
     return created_files

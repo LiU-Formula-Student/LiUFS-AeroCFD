@@ -9,7 +9,7 @@ import zipfile
 
 from .encoder import build_video_from_images, find_cfd_images
 from .scanner import build_structure
-
+from .reporting import BaseReporter, NullReporter
 
 def _is_leaf(node: dict) -> bool:
     return isinstance(node, dict) and "type" in node and "path" in node
@@ -41,6 +41,7 @@ def _process_leaf(
     fps: int,
     extension: str,
     include_unknown: bool,
+    reporter: BaseReporter,
 ) -> None:
     src_dir = Path(leaf_info["path"])
     leaf_type = leaf_info.get("type", "unknown")
@@ -48,7 +49,7 @@ def _process_leaf(
     manifest_node["type"] = leaf_type
     manifest_node["source_path"] = str(src_dir)
     manifest_node["source_count"] = leaf_info.get("count", 0)
-
+    reporter.advance(f"Processing {leaf_type}: {src_dir.name}")
     if leaf_type == "cfd_images":
         images = find_cfd_images(str(src_dir))
         package_root.mkdir(parents=True, exist_ok=True)
@@ -58,6 +59,7 @@ def _process_leaf(
             output_dir=str(package_root),
             fps=fps,
             extension=extension,
+            reporter=reporter,
         )
 
         manifest_node["planes"] = sorted({image.plane for image in images})
@@ -98,6 +100,7 @@ def _build_manifest_tree(
     fps: int,
     extension: str,
     include_unknown: bool,
+    reporter: BaseReporter,
 ) -> None:
     if _is_leaf(structure_node):
         _process_leaf(
@@ -107,6 +110,7 @@ def _build_manifest_tree(
             fps=fps,
             extension=extension,
             include_unknown=include_unknown,
+            reporter=reporter,
         )
         return
 
@@ -122,6 +126,7 @@ def _build_manifest_tree(
             fps=fps,
             extension=extension,
             include_unknown=include_unknown,
+            reporter=reporter
         )
 
 
@@ -147,12 +152,16 @@ def build_liufs(
     fps: int = 12,
     extension: str = "mp4",
     include_unknown: bool = False,
+    reporter: BaseReporter | None = None,
 ) -> Path:
+    reporter = reporter or NullReporter()
     source_path = Path(source_dir).resolve()
     if not source_path.is_dir():
         raise FileNotFoundError(f"Source directory does not exist: {source_path}")
 
-    structure = build_structure(str(source_path))
+    reporter.start_step(f"Scanning simulation directory: {source_path}")
+    structure = build_structure(str(source_path), reporter=reporter)
+    reporter.finish_step("Directory scan complete")
 
     if output_file is None:
         output_path = source_path.with_suffix(".liufs")
@@ -163,6 +172,7 @@ def build_liufs(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    reporter.start_step("Building package contents")
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_root = Path(tmp_dir)
         package_root = tmp_root / source_path.name
@@ -191,9 +201,14 @@ def build_liufs(
             fps=fps,
             extension=extension,
             include_unknown=include_unknown,
+            reporter=reporter
         )
+        reporter.finish_step("Package contents built")
 
+        reporter.start_step("Writing manifest.json")
         _write_manifest(package_root, manifest)
+        reporter.start_step(f"Creating archive: {output_path.name}")
         _zip_directory(package_root, output_path)
+        reporter.finish_step(f"Archive created: {output_path}")
 
     return output_path

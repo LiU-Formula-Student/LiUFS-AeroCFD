@@ -4,7 +4,9 @@ import argparse
 import os
 from pathlib import Path
 import sys
+from rich.console import Console
 
+from .reporting import RichReporter
 from .packager import build_liufs
 
 
@@ -62,13 +64,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--fps must be greater than 0")
 
     try:
-        result = build_liufs(
-            source_dir=source,
-            output_file=output,
-            fps=args.fps,
-            extension=args.extension,
-            include_unknown=args.include_unknown,
-        )
+        console = Console()
+        reporter = RichReporter(console)
+        with console.status("[bold dark_orange]Building .liufs archive..."):
+            result = build_liufs(
+                source_dir=source,
+                output_file=output,
+                fps=args.fps,
+                extension=args.extension,
+                include_unknown=args.include_unknown,
+                reporter=reporter,
+            )
     except Exception as exc:
         print(f"Failed to build .liufs archive: {exc}", file=sys.stderr)
         return 1
