@@ -189,8 +189,8 @@ GitHub Actions pipeline:
 
 Observed example:
 
-- 275 GB images → 4.8 GB compressed
-- ~60x reduction
+- 275 GB images → 2.0 GB compressed
+- ~140x reduction
 
 ---
 
