@@ -1,6 +1,6 @@
 # LiU FS Viewer vX.Y.Z
 
-> Use this template as the custom preface when creating a GitHub Release, then click **Generate release notes** so GitHub appends the auto-generated sections.
+> This template is used as the custom preface for published GitHub Releases. The workflow appends GitHub-generated release notes automatically.
 
 ## User-Facing Highlights
 
@@ -15,6 +15,7 @@ Download from the **Assets** section of this Release:
 - **Windows**: `liufs-viewer-windows.zip`
 - **macOS**: `liufs-viewer-macos.zip`
 - **Linux**: `liufs-viewer-linux.tar.gz`
+- **Python wheel**: `aerocfd-*.whl`
 
 ## Install
 
@@ -28,6 +29,12 @@ Download from the **Assets** section of this Release:
 Notes:
 - If SmartScreen appears, click **More info** → **Run anyway**.
 - No separate Python installation is required for the packaged app.
+
+Wheel package install:
+
+```powershell
+pip install .\aerocfd-*.whl
+```
 
 ### macOS
 
@@ -43,6 +50,12 @@ xattr -dr com.apple.quarantine liufs-viewer
 ```
 
 Then launch again.
+
+Wheel package install:
+
+```bash
+pip install ./aerocfd-*.whl
+```
 
 ### Linux
 
@@ -63,6 +76,12 @@ cd liufs-viewer
 
 ```bash
 ./liufs-viewer
+```
+
+Wheel package install:
+
+```bash
+pip install ./aerocfd-*.whl
 ```
 
 ## Upgrade Notes
