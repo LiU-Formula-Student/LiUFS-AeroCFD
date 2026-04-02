@@ -7,6 +7,7 @@ This package scans a simulation directory tree, classifies leaf folders, and the
 - Converts `3d_views` images into `.webp` for additional compression
 - Writes a `manifest.json` describing packaged content
 - Produces a ZIP-based `.liufs` archive
+- Can append a new run into an existing `.liufs` archive
 
 ## Installation
 
@@ -69,6 +70,8 @@ python -m simulation_compressor <source_dir> [options]
 ### Options
 
 - `-o, --output` Output `.liufs` file path (default: `<source>.liufs`)
+- `--append-to` Existing `.liufs` archive to extend with the source directory as a new run
+- `--run-name` Override the run name used when appending to an existing archive
 - `--fps` FPS for generated CFD videos (default: `12`)
 - `--extension` Video extension for CFD videos (default: `mp4`)
 - `--webp-quality` WebP quality for `3d_views` conversion, `0-100` (default: `80`)
@@ -87,7 +90,7 @@ aerocfd /path/to/ER26-BL-0001 \
 ## Python API
 
 ```python
-from simulation_compressor.packager import build_liufs
+from simulation_compressor.packager import append_run_to_liufs, build_liufs
 
 archive_path = build_liufs(
     source_dir="/path/to/ER26-BL-0001",
@@ -98,6 +101,22 @@ archive_path = build_liufs(
     include_unknown=False,
 )
 print(archive_path)
+
+append_path = append_run_to_liufs(
+  source_dir="/path/to/new_run",
+  archive_file="/path/to/ER26-BL-0001.liufs",
+)
+print(append_path)
+```
+
+To append with a custom run name:
+
+```python
+append_path = append_run_to_liufs(
+  source_dir="/path/to/new_run",
+  archive_file="/path/to/ER26-BL-0001.liufs",
+  run_name="run_02",
+)
 ```
 
 ## Folder Classification

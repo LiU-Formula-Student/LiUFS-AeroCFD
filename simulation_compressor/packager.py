@@ -18,12 +18,76 @@ from .encoder import (
 from .scanner import build_structure
 from .reporting import BaseReporter, NullReporter
 
+
+class DuplicateRunError(ValueError):
+    """Raised when an archive already contains a run with the requested name."""
+
+    def __init__(self, run_name: str, existing_runs: list[str]):
+        self.run_name = run_name
+        self.existing_runs = existing_runs
+        super().__init__(f"A run with this name already exists: {run_name}")
+
 def _is_leaf(node: dict) -> bool:
     return isinstance(node, dict) and "type" in node and "path" in node
 
 
 def _to_posix(path: Path) -> str:
     return path.as_posix()
+
+
+def _coerce_liufs_output_path(output_file: str | Path | None, default_path: Path) -> Path:
+    if output_file is None:
+        return default_path if default_path.suffix.lower() == ".liufs" else default_path.with_suffix(".liufs")
+
+    output_path = Path(output_file).resolve()
+    if output_path.suffix.lower() != ".liufs":
+        output_path = output_path.with_suffix(".liufs")
+    return output_path
+
+
+def _read_manifest_from_archive(archive_path: Path) -> dict:
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        if "manifest.json" not in archive.namelist():
+            raise ValueError("manifest.json not found at root of .liufs file")
+
+        with archive.open("manifest.json") as handle:
+            manifest = json.load(handle)
+
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest.json must contain a JSON object")
+
+    return manifest
+
+
+def _find_package_root(extracted_root: Path, manifest: dict, archive_path: Path) -> Path:
+    # Check if manifest.json is at the root level — if so, this is the package root
+    if (extracted_root / "manifest.json").exists():
+        return extracted_root
+
+    # Otherwise look for a subdirectory matching the simulation name
+    simulation_name = manifest.get("simulation_name")
+    if isinstance(simulation_name, str) and simulation_name:
+        candidate = extracted_root / simulation_name
+        if candidate.is_dir():
+            return candidate
+
+    # As a fallback, use the only subdirectory if there's exactly one
+    directories = [path for path in extracted_root.iterdir() if path.is_dir()]
+    if len(directories) == 1:
+        return directories[0]
+
+    raise ValueError(f"Could not locate extracted package root for archive: {archive_path}")
+
+
+def _write_archive(package_root: Path, output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_output = output_path.parent / f".{output_path.name}.tmp"
+    if temporary_output.exists():
+        temporary_output.unlink()
+
+    _zip_directory(package_root, temporary_output)
+    temporary_output.replace(output_path)
+    return output_path
 
 
 def _copy_files(src_dir: Path, dst_dir: Path, reporter: BaseReporter | None = None) -> tuple[list[str], int]:
@@ -207,12 +271,7 @@ def build_liufs(
     total_images = _count_total_images(structure, include_unknown=include_unknown)
     reporter.set_total(total_images, description="Processing CFD and 3D images")
 
-    if output_file is None:
-        output_path = source_path.with_suffix(".liufs")
-    else:
-        output_path = Path(output_file).resolve()
-        if output_path.suffix.lower() != ".liufs":
-            output_path = output_path.with_suffix(".liufs")
+    output_path = _coerce_liufs_output_path(output_file, source_path.with_suffix(".liufs"))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -256,6 +315,91 @@ def build_liufs(
         _write_manifest(package_root, manifest)
         reporter.start_step(f"Creating archive: {output_path.name}")
         _zip_directory(package_root, output_path)
+        reporter.finish_step(f"Archive created: {output_path}")
+
+    return output_path
+
+
+def append_run_to_liufs(
+    source_dir: str | Path,
+    archive_file: str | Path,
+    output_file: str | Path | None = None,
+    *,
+    run_name: str | None = None,
+    fps: int = 12,
+    extension: str = "mp4",
+    webp_quality: int = 80,
+    include_unknown: bool = False,
+    reporter: BaseReporter | None = None,
+) -> Path:
+    reporter = reporter or NullReporter()
+    source_path = Path(source_dir).resolve()
+    if not source_path.is_dir():
+        raise FileNotFoundError(f"Source directory does not exist: {source_path}")
+
+    archive_path = Path(archive_file).resolve()
+    if not archive_path.exists():
+        raise FileNotFoundError(f"Archive does not exist: {archive_path}")
+
+    if archive_path.suffix.lower() != ".liufs":
+        raise ValueError(f"Archive must have .liufs extension, got: {archive_path.suffix}")
+
+    target_run_name = (run_name or source_path.name).strip()
+    if not target_run_name:
+        raise ValueError("Run name cannot be empty")
+
+    output_path = _coerce_liufs_output_path(output_file, archive_path)
+    manifest = _read_manifest_from_archive(archive_path)
+
+    runs_node = manifest.setdefault("runs", {})
+    if not isinstance(runs_node, dict):
+        raise ValueError("manifest.json has an invalid 'runs' section")
+
+    run_children = runs_node.setdefault("children", {})
+    if not isinstance(run_children, dict):
+        raise ValueError("manifest.json has an invalid 'runs.children' section")
+
+    if target_run_name in run_children:
+        raise DuplicateRunError(target_run_name, sorted(run_children.keys()))
+
+    reporter.start_step(f"Scanning simulation directory: {source_path}")
+    structure = build_structure(str(source_path), reporter=reporter)
+    reporter.finish_step("Directory scan complete")
+
+    total_images = _count_total_images(structure, include_unknown=include_unknown)
+    reporter.set_total(total_images, description="Processing CFD and 3D images")
+
+    reporter.start_step("Building package contents")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_root = Path(tmp_dir)
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            archive.extractall(tmp_root)
+
+        package_root = _find_package_root(tmp_root, manifest, archive_path)
+        run_root = package_root / "runs" / target_run_name
+        run_root.mkdir(parents=True, exist_ok=True)
+
+        run_manifest: dict = {}
+        run_children[target_run_name] = run_manifest
+
+        _build_manifest_tree(
+            structure,
+            run_manifest,
+            run_root,
+            fps=fps,
+            extension=extension,
+            webp_quality=webp_quality,
+            include_unknown=include_unknown,
+            reporter=reporter,
+        )
+        reporter.complete_progress("Image processing complete")
+        reporter.finish_step("Package contents built")
+
+        reporter.start_step("Writing manifest.json")
+        manifest["updated_at_utc"] = datetime.now(timezone.utc).isoformat()
+        _write_manifest(package_root, manifest)
+        reporter.start_step(f"Creating archive: {output_path.name}")
+        _write_archive(package_root, output_path)
         reporter.finish_step(f"Archive created: {output_path}")
 
     return output_path

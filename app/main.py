@@ -10,15 +10,90 @@ from typing import Optional, Dict, Any
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QSlider, QSplitter, QMessageBox, QFileDialog, QComboBox
+    QLabel, QSlider, QSplitter, QMessageBox, QFileDialog, QComboBox,
+    QDialog, QDialogButtonBox, QLineEdit, QPlainTextEdit
 )
-from PySide6.QtCore import Qt, qVersion
+from PySide6.QtCore import Qt, qVersion, QThread, Signal
 from PySide6.QtGui import QKeySequence, QShortcut, QPixmap
 
 from .liufs_handler import LiufsFileHandler
 from .file_tree import FileTreeWidget
+from simulation_compressor.packager import DuplicateRunError, append_run_to_liufs
+from simulation_compressor.reporting import BaseReporter, ProgressEvent
 from .video_player import VideoPlayer
 from .version import APP_VERSION
+
+
+class GUIReporter(BaseReporter):
+    """Reporter that updates through a callback signal."""
+
+    def __init__(self, progress_signal):
+        self.progress_signal = progress_signal
+
+    def emit(self, event: ProgressEvent) -> None:
+        """Update via signal with progress information."""
+        if event.kind == "step_start":
+            message = event.data.get("message", "Processing...") if event.data else "Processing..."
+            self.progress_signal.emit(f"► {message}")
+        elif event.kind == "step_end":
+            message = event.data.get("message", "Step complete") if event.data else "Step complete"
+            self.progress_signal.emit(f"✓ {message}")
+        elif event.kind == "progress":
+            message = event.data.get("message", "") if event.data else ""
+            if message:
+                self.progress_signal.emit(f"  {message}")
+        elif event.kind == "log":
+            message = event.data.get("message", "") if event.data else ""
+            if message:
+                self.progress_signal.emit(message)
+        elif event.kind == "warning":
+            message = event.data.get("message", "") if event.data else ""
+            if message:
+                self.progress_signal.emit(f"⚠ {message}")
+
+    def advance(self, message: str, **data: Any) -> None:
+        """Emit an advance message."""
+        self.progress_signal.emit(f"  {message}")
+
+    def log(self, message: str, **data: Any) -> None:
+        """Log a message."""
+        self.progress_signal.emit(message)
+
+    def warn(self, message: str, **data: Any) -> None:
+        """Emit a warning."""
+        self.progress_signal.emit(f"⚠ {message}")
+
+class AppendRunWorker(QThread):
+    """Worker thread for appending a run to an existing archive."""
+
+    progress_updated = Signal(str)
+    finished = Signal(Path)
+    error = Signal(str)
+    duplicate_error = Signal(str, list)
+
+    def __init__(self, parent, source_dir: str, archive_file: Path, output_file: Path, run_name: str | None):
+        super().__init__(parent)
+        self.source_dir = source_dir
+        self.archive_file = archive_file
+        self.output_file = output_file
+        self.run_name = run_name
+
+    def run(self):
+        """Run the append operation in the background."""
+        try:
+            reporter = GUIReporter(self.progress_updated)
+            result = append_run_to_liufs(
+                source_dir=self.source_dir,
+                archive_file=self.archive_file,
+                output_file=self.output_file,
+                run_name=self.run_name,
+                reporter=reporter,
+            )
+            self.finished.emit(result)
+        except DuplicateRunError as exc:
+            self.duplicate_error.emit(exc.run_name, exc.existing_runs)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class ViewerWindow(QMainWindow):
@@ -38,6 +113,9 @@ class ViewerWindow(QMainWindow):
         self.current_group_path: list[str] = []
         self.current_categories: Dict[str, Dict[str, Any]] = {}
         self.current_datasets: Dict[str, Dict[str, Any]] = {}
+        self.add_run_action = None
+        self.append_worker: Optional[AppendRunWorker] = None
+        self.current_append_source_dir: Optional[str] = None
         
         self.setup_ui()
         self.setup_shortcuts()
@@ -108,8 +186,10 @@ class ViewerWindow(QMainWindow):
         right_layout.addLayout(controls_layout)
         
         # Frame info label
-        self.info_label = QLabel("No file loaded")
-        self.info_label.setStyleSheet("color: #888888; font-size: 11px;")
+        self.info_label = QPlainTextEdit()
+        self.info_label.setReadOnly(True)
+        self.info_label.setMaximumHeight(80)
+        self.info_label.setStyleSheet("color: #888888; font-size: 11px; background-color: #1e1e1e;")
         right_layout.addWidget(self.info_label)
         
         splitter.addWidget(right_panel)
@@ -131,6 +211,10 @@ class ViewerWindow(QMainWindow):
         open_action = file_menu.addAction("&Open .liufs File")
         open_action.setShortcut(QKeySequence.StandardKey.Open)
         open_action.triggered.connect(self.open_file)
+
+        self.add_run_action = file_menu.addAction("&Add New Run")
+        self.add_run_action.triggered.connect(self.add_new_run)
+        self.add_run_action.setEnabled(False)
         
         file_menu.addSeparator()
         
@@ -210,11 +294,118 @@ class ViewerWindow(QMainWindow):
             self.setWindowTitle(f"LiU FS Simulation Viewer - {sim_name}")
             
             self.image_label.setText("Select a run/image-group from the tree to view")
-            self.info_label.setText("File loaded successfully")
+            self.info_label.clear()
+            self.info_label.appendPlainText("File loaded successfully")
             self.reset_option_controls()
+            self.update_file_actions()
         
         except Exception as e:
             raise e
+
+    def update_file_actions(self):
+        """Enable or disable file actions that depend on an open archive."""
+        if self.add_run_action is not None:
+            self.add_run_action.setEnabled(self.current_liufs_handler is not None)
+
+    def add_new_run(self):
+        """Add a new run directory to the currently open .liufs archive."""
+        if not self.current_liufs_handler:
+            return
+
+        source_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Run Directory",
+            "",
+        )
+
+        if not source_dir:
+            return
+
+        self._append_new_run(source_dir)
+
+    def _append_new_run(self, source_dir: str, run_name: Optional[str] = None):
+        if not self.current_liufs_handler:
+            return
+
+        self.current_append_source_dir = source_dir
+
+        self.info_label.clear()
+        self.info_label.appendPlainText("Starting to add new run...\n")
+
+        self.append_worker = AppendRunWorker(
+            self,
+            source_dir,
+            self.current_liufs_handler.file_path,
+            self.current_liufs_handler.file_path,
+            run_name,
+        )
+        self.append_worker.progress_updated.connect(self._on_progress_update)
+        self.append_worker.finished.connect(self._on_append_finished)
+        self.append_worker.error.connect(self._on_append_error)
+        self.append_worker.duplicate_error.connect(self._on_append_duplicate_error)
+        self.append_worker.start()
+
+    def _on_progress_update(self, message: str):
+        """Append progress message to the info text area."""
+        self.info_label.appendPlainText(message)
+
+    def _on_append_finished(self, result: Path):
+        """Handle successful append completion."""
+        self.info_label.appendPlainText("\nRun added successfully! Reloading archive...\n")
+        try:
+            self.load_liufs_file(str(result))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to refresh file after adding run:\n{str(e)}")
+            self.info_label.appendPlainText(f"\nError: {str(e)}")
+
+    def _on_append_error(self, error_msg: str):
+        """Handle append error."""
+        QMessageBox.critical(self, "Error", f"Failed to add run:\n{error_msg}")
+        self.info_label.appendPlainText(f"\nError: {error_msg}")
+
+    def _on_append_duplicate_error(self, run_name: str, existing_runs: list):
+        """Handle duplicate run error with rename prompt."""
+        self.info_label.appendPlainText(f"\nDuplicate run name: '{run_name}'. Prompting for rename...\n")
+        renamed_run_name = self.prompt_for_run_rename(run_name)
+        if not renamed_run_name:
+            self.info_label.appendPlainText("Add run cancelled by user.\n")
+            return
+
+        self.info_label.appendPlainText(f"Retrying with run name: '{renamed_run_name}'\n")
+        self._append_new_run(self.current_append_source_dir, run_name=renamed_run_name)
+
+    def prompt_for_run_rename(self, suggested_name: str) -> Optional[str]:
+        """Ask the user for a replacement run name after a duplicate collision."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Run Already Exists")
+
+        layout = QVBoxLayout(dialog)
+
+        message_label = QLabel("A run with this name already exists. Do you want to rename the file to:")
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+
+        name_input = QLineEdit(suggested_name, dialog)
+        layout.addWidget(name_input)
+
+        button_box = QDialogButtonBox(dialog)
+        rename_button = button_box.addButton("Rename", QDialogButtonBox.ButtonRole.AcceptRole)
+        button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
+        layout.addWidget(button_box)
+
+        def accept_rename():
+            candidate = name_input.text().strip()
+            if not candidate:
+                QMessageBox.warning(dialog, "Invalid Name", "Run name cannot be empty.")
+                return
+            dialog.accept()
+
+        rename_button.clicked.connect(accept_rename)
+        button_box.rejected.connect(dialog.reject)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return name_input.text().strip()
+        return None
     
     def on_tree_selection_changed(self):
         """Handle tree selection change."""
@@ -381,7 +572,8 @@ class ViewerWindow(QMainWindow):
                 self.frame_slider.setEnabled(frame_count > 0)
 
                 self.display_frame(0)
-                self.info_label.setText(
+                self.info_label.clear()
+                self.info_label.appendPlainText(
                     f"{category_name}/{dataset_name}/{item_name} | Frames: {frame_count} | FPS: {self.video_player.fps:.2f}"
                 )
 
@@ -416,7 +608,8 @@ class ViewerWindow(QMainWindow):
                 self.frame_slider.setValue(0)
                 self.frame_slider.setMaximum(0)
                 self.frame_slider.setEnabled(False)
-                self.info_label.setText(f"{category_name}/{dataset_name}/{item_name} | Static image")
+                self.info_label.clear()
+                self.info_label.appendPlainText(f"{category_name}/{dataset_name}/{item_name} | Static image")
 
             else:
                 self.image_label.setText("Selected dataset type is not supported yet")
@@ -425,7 +618,8 @@ class ViewerWindow(QMainWindow):
 
         except Exception as e:
             self.image_label.setText(f"Error: {str(e)}")
-            self.info_label.setText("Failed to load selection")
+            self.info_label.clear()
+            self.info_label.appendPlainText(f"Error: {str(e)}")
     
     def display_frame(self, frame_index: int):
         """
@@ -453,7 +647,8 @@ class ViewerWindow(QMainWindow):
             
             current_frame = self.video_player.current_frame_index
             total_frames = self.video_player.get_total_frames()
-            self.info_label.setText(
+            self.info_label.clear()
+            self.info_label.appendPlainText(
                 f"Frame: {current_frame + 1}/{total_frames}"
             )
     

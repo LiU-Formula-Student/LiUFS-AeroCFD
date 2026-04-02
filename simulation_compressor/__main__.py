@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import sys
 from rich.console import Console
 
 from .reporting import RichReporter
-from .packager import build_liufs
+from .packager import DuplicateRunError, append_run_to_liufs, build_liufs
 
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aerocfd",
-        description="Build a .liufs archive from a CFD simulation directory.",
+        description="Build or extend a .liufs archive from a CFD simulation directory.",
     )
     parser.add_argument(
         "source",
@@ -22,7 +21,15 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-o",
         "--output",
-        help="Output .liufs file path. Defaults to <source>.liufs.",
+        help="Output .liufs file path. Defaults to <source>.liufs, or overwrites --append-to when used.",
+    )
+    parser.add_argument(
+        "--append-to",
+        help="Existing .liufs archive to extend with the source directory as a new run.",
+    )
+    parser.add_argument(
+        "--run-name",
+        help="Override the run name used when appending to an existing .liufs archive.",
     )
     parser.add_argument(
         "--fps",
@@ -54,10 +61,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     source = Path(args.source).expanduser()
-    if args.output:
-        output = Path(args.output).expanduser() 
-    else:
-        output = args.source.split(os.sep)[-1] + ".liufs" if os.sep in str(source) else source.with_suffix(".liufs")
+    output = Path(args.output).expanduser() if args.output else None
+    append_to = Path(args.append_to).expanduser() if args.append_to else None
+
+    if append_to and not append_to.exists():
+        parser.error(f"Target archive does not exist: {append_to}")
 
 
     if not source.exists():
@@ -76,17 +84,34 @@ def main(argv: list[str] | None = None) -> int:
     try:
         console = Console()
         reporter = RichReporter(console)
-        result = build_liufs(
-            source_dir=source,
-            output_file=output,
-            fps=args.fps,
-            extension=args.extension,
-            webp_quality=args.webp_quality,
-            include_unknown=args.include_unknown,
-            reporter=reporter,
-        )
+        if append_to:
+            result = append_run_to_liufs(
+                source_dir=source,
+                archive_file=append_to,
+                output_file=output,
+                run_name=args.run_name,
+                fps=args.fps,
+                extension=args.extension,
+                webp_quality=args.webp_quality,
+                include_unknown=args.include_unknown,
+                reporter=reporter,
+            )
+        else:
+            result = build_liufs(
+                source_dir=source,
+                output_file=output,
+                fps=args.fps,
+                extension=args.extension,
+                webp_quality=args.webp_quality,
+                include_unknown=args.include_unknown,
+                reporter=reporter,
+            )
+    except DuplicateRunError as exc:
+        print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
+        return 1
     except Exception as exc:
-        print(f"Failed to build .liufs archive: {exc}", file=sys.stderr)
+        action = "extend" if append_to else "build"
+        print(f"Failed to {action} .liufs archive: {exc}", file=sys.stderr)
         return 1
     finally:
         if reporter is not None:
