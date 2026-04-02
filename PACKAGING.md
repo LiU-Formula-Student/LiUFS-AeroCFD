@@ -15,7 +15,7 @@ AeroCFD/
 ├── pyproject.toml              # Package metadata and build config
 ├── MANIFEST.in                 # Distribution file inclusion rules
 ├── dist/                       # Built distributions
-│   ├── aerocfd-1.0b0.post1-py3-none-any.whl
+│   ├── aerocfd-1.0b0.post4-py3-none-any.whl
 │   └── simulation_compressor-0.1.0.tar.gz
 └── simulation_compressor/      # Package source
     ├── __init__.py
@@ -47,7 +47,7 @@ Artifacts are created in the `dist/` directory.
 
 ```bash
 # Install from local wheel
-pip install dist/aerocfd-1.0b0.post1-py3-none-any.whl
+pip install dist/aerocfd-1.0b0.post4-py3-none-any.whl
 
 # Test the CLI command
 liufs-compressor --help
@@ -190,7 +190,7 @@ pip list | grep simulation
 
 If not installed, install from wheel or git:
 ```bash
-pip install /path/to/aerocfd-1.0b0.post1-py3-none-any.whl
+pip install /path/to/aerocfd-1.0b0.post4-py3-none-any.whl
 ```
 
 ### Import Errors After Installation
