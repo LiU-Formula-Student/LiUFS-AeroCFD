@@ -5,12 +5,39 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QCoreApplication
+def _is_missing_gui_system_lib(error_message: str) -> bool:
+    """Return True when import failed due to missing OS-level GUI libraries."""
+    missing_markers = [
+        "libEGL.so.1",
+        "libGL.so.1",
+        "libxcb",
+        "could not load the Qt platform plugin",
+    ]
+    lowered = error_message.lower()
+    return any(marker.lower() in lowered for marker in missing_markers)
+
+
+def _is_missing_qt_python_package(exc: Exception) -> bool:
+    """Return True when PySide6 itself is not installed."""
+    return isinstance(exc, ModuleNotFoundError) and getattr(exc, "name", None) == "PySide6"
+
+
+try:
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QCoreApplication
+except Exception as exc:  # pragma: no cover - platform dependent
+    if _is_missing_qt_python_package(exc) or _is_missing_gui_system_lib(str(exc)):
+        pytest.skip(
+            "Skipping GUI viewer tests: missing system GUI libraries in CI environment",
+            allow_module_level=True,
+        )
+    raise
 
 from app.main import ViewerWindow
 from simulation_compressor.packager import DuplicateRunError
