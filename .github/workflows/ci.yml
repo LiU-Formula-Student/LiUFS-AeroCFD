@@ -29,9 +29,9 @@ jobs:
           pip install -r requirements.txt
           pip install -e ".[dev]"
 
-      - name: Run component checks
+      - name: Run tests
         run: |
-          python tests/test_components.py
+          python -m tests
 
       - name: Run pytest suite
         run: |
