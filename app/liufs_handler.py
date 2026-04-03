@@ -10,8 +10,16 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 
+class LiufsValidationError(ValueError):
+    """Raised when .liufs file validation fails."""
+    pass
+
+
 class LiufsFileHandler:
     """Handles reading and parsing .liufs files."""
+    
+    SUPPORTED_FORMAT_VERSION = 1
+    REQUIRED_MANIFEST_FIELDS = {'format_version', 'simulation_name', 'runs'}
     
     def __init__(self, file_path: str):
         """
@@ -22,7 +30,7 @@ class LiufsFileHandler:
             
         Raises:
             FileNotFoundError: If file doesn't exist
-            ValueError: If file is not a valid .liufs file
+            LiufsValidationError: If file is not a valid .liufs file
         """
         self.file_path = Path(file_path)
         
@@ -30,29 +38,126 @@ class LiufsFileHandler:
             raise FileNotFoundError(f"File not found: {file_path}")
         
         if not self.file_path.suffix.lower() == '.liufs':
-            raise ValueError(f"File must have .liufs extension, got: {self.file_path.suffix}")
+            raise LiufsValidationError(f"File must have .liufs extension, got: {self.file_path.suffix}")
         
         self._manifest = None
+        self._warnings: list[str] = []
         self._validate_and_load_manifest()
     
     def _validate_and_load_manifest(self):
         """
-        Validate that manifest.json exists at root and load it.
+        Validate that manifest.json exists at root and load it with format checks.
         
         Raises:
-            ValueError: If manifest.json is not found or invalid
+            LiufsValidationError: If manifest.json is not found or invalid
         """
+        # Check if file is a valid ZIP
+        try:
+            with zipfile.ZipFile(self.file_path, 'r') as zf:
+                pass
+        except zipfile.BadZipFile:
+            raise LiufsValidationError(
+                f"File is corrupted or not a valid .liufs archive.\n\n"
+                f"Details: Not a valid ZIP file."
+            )
+        except Exception as e:
+            raise LiufsValidationError(
+                f"Cannot open file: {str(e)}"
+            )
+        
+        # Extract and validate manifest
         try:
             with zipfile.ZipFile(self.file_path, 'r') as zf:
                 if 'manifest.json' not in zf.namelist():
-                    raise ValueError("manifest.json not found at root of .liufs file")
+                    raise LiufsValidationError(
+                        "Invalid .liufs file: manifest.json not found at root.\n\n"
+                        "This file may have been created with an older or incompatible version."
+                    )
                 
-                with zf.open('manifest.json') as f:
-                    self._manifest = json.load(f)
-        except zipfile.BadZipFile:
-            raise ValueError(f"File is not a valid ZIP archive: {self.file_path}")
-        except json.JSONDecodeError:
-            raise ValueError("manifest.json is not valid JSON")
+                try:
+                    with zf.open('manifest.json') as f:
+                        self._manifest = json.load(f)
+                except json.JSONDecodeError as e:
+                    raise LiufsValidationError(
+                        f"manifest.json is corrupted or contains invalid JSON.\n\n"
+                        f"Details: {str(e)}"
+                    )
+        except LiufsValidationError:
+            raise
+        except Exception as e:
+            raise LiufsValidationError(f"Error reading file: {str(e)}")
+        
+        # Validate manifest structure
+        self._validate_manifest_structure()
+    
+    def _validate_manifest_structure(self):
+        """
+        Validate that manifest has required fields and correct structure.
+        
+        Raises:
+            LiufsValidationError: If manifest structure is invalid
+        """
+        if not isinstance(self._manifest, dict):
+            raise LiufsValidationError(
+                "manifest.json is malformed: root must be a JSON object."
+            )
+        
+        # Check required fields
+        missing_fields = self.REQUIRED_MANIFEST_FIELDS - set(self._manifest.keys())
+        if missing_fields:
+            raise LiufsValidationError(
+                f"manifest.json is incomplete: missing fields {sorted(missing_fields)}."
+            )
+        
+        # Check format version
+        format_version = self._manifest.get('format_version')
+        if format_version != self.SUPPORTED_FORMAT_VERSION:
+            raise LiufsValidationError(
+                f"Unsupported .liufs format version: {format_version} "
+                f"(this application supports version {self.SUPPORTED_FORMAT_VERSION})."
+            )
+        
+        # Validate runs structure
+        runs = self._manifest.get('runs')
+        if not isinstance(runs, dict):
+            raise LiufsValidationError(
+                "manifest.json is malformed: 'runs' must be a JSON object."
+            )
+        
+        if 'children' not in runs:
+            raise LiufsValidationError(
+                "manifest.json is malformed: 'runs' must contain a 'children' field."
+            )
+        
+        children = runs['children']
+        if not isinstance(children, dict):
+            raise LiufsValidationError(
+                "manifest.json is malformed: 'runs.children' must be a JSON object."
+            )
+        
+        # Validate each run has required structure
+        for run_name, run_data in children.items():
+            if not isinstance(run_data, dict):
+                raise LiufsValidationError(
+                    f"manifest.json is malformed: run '{run_name}' must be a JSON object."
+                )
+
+            run_children = run_data.get("children")
+            if isinstance(run_children, dict):
+                continue
+
+            # Non-fatal case: explicitly skipped runs can be present without children.
+            if run_data.get("skipped") is True:
+                reason = run_data.get("reason")
+                reason_suffix = f" ({reason})" if isinstance(reason, str) and reason else ""
+                self._warnings.append(
+                    f"Run '{run_name}' does not contain any images and is hidden{reason_suffix}."
+                )
+                continue
+
+            raise LiufsValidationError(
+                f"manifest.json is malformed: run '{run_name}' must contain a 'children' field."
+            )
     
     @property
     def manifest(self) -> Dict[str, Any]:
@@ -63,9 +168,20 @@ class LiufsFileHandler:
         """Get list of run names from manifest."""
         if not self._manifest or 'runs' not in self._manifest:
             return []
-        
+
         runs = self._manifest['runs'].get('children', {})
-        return list(runs.keys())
+        if not isinstance(runs, dict):
+            return []
+
+        visible_runs: list[str] = []
+        for run_name, run_data in runs.items():
+            if isinstance(run_data, dict) and isinstance(run_data.get("children"), dict):
+                visible_runs.append(run_name)
+        return visible_runs
+
+    def get_validation_warnings(self) -> list[str]:
+        """Return non-fatal validation warnings collected while loading the archive."""
+        return list(self._warnings)
     
     def get_simulation_name(self) -> str:
         """Get the simulation name from manifest."""
