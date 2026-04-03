@@ -2,7 +2,9 @@
 
 from typing import Dict, Any, List
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QAbstractItemView
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QMimeData, QByteArray, QDrag
+from PySide6.QtGui import QPixmap
+import json
 
 
 class FileTreeWidget(QTreeWidget):
@@ -15,6 +17,36 @@ class FileTreeWidget(QTreeWidget):
         self.setHeaderLabel("Structure")
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setUniformRowHeights(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+    
+    def startDrag(self, supportedActions):
+        """Support dragging runs to split pane widgets."""
+        item = self.currentItem()
+        if not item:
+            super().startDrag(supportedActions)
+            return
+        
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(data, dict) or "path" not in data:
+            super().startDrag(supportedActions)
+            return
+        
+        path = data.get("path", [])
+        if len(path) != 1:  # Only allow dragging run nodes (path length 1)
+            return
+        
+        mime_data = QMimeData()
+        # Encode the run reference as JSON in mime data
+        run_info = {
+            "archive_id": data.get("archive_id"),
+            "run_name": path[0]
+        }
+        mime_data.setData("application/x-run-ref", QByteArray(json.dumps(run_info).encode()))
+        
+        drag = QDrag(self)
+        drag.setMimeData(mime_data)
+        drag.setPixmap(QPixmap(24, 24))
+        drag.exec(supportedActions)
     
     def populate_from_manifest(self, manifest: Dict[str, Any]):
         """

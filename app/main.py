@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame
 )
 from PySide6.QtCore import Qt, qVersion, QThread, Signal, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut, QPixmap
+from PySide6.QtGui import QKeySequence, QShortcut, QPixmap, QDragEnterEvent, QDropEvent
 
 from .liufs_handler import LiufsFileHandler, LiufsValidationError
 from .file_tree import FileTreeWidget
@@ -138,6 +138,8 @@ class DetachedImageWindow(QMainWindow):
 class ImagePane(QWidget):
     """Single image display pane with run info."""
     
+    run_dropped = Signal(int, str, str)  # pane_id, archive_id, run_name
+    
     def __init__(self, pane_id: int):
         super().__init__()
         self.pane_id = pane_id
@@ -152,6 +154,8 @@ class ImagePane(QWidget):
         self.label.setStyleSheet("background-color: #1e1e1e; color: #888888; font-size: 11px;")
         self.label.setMinimumHeight(200)
         layout.addWidget(self.label)
+        
+        self.setAcceptDrops(True)
     
     def set_content(self, title: str, pixmap: Optional[QPixmap]):
         """Update pane content."""
@@ -174,6 +178,32 @@ class ImagePane(QWidget):
         self.label.setPixmap(QPixmap())
         self.label.setText(f"Pane {self.pane_id}\n(Drag run here)")
         self.label.setStyleSheet("background-color: #1e1e1e; color: #888888; font-size: 11px;")
+    
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        """Accept drag events with run reference MIME type."""
+        if event.mimeData().hasFormat("application/x-run-ref"):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event: QDropEvent):
+        """Handle drop events to load a run into this pane."""
+        mime_data = event.mimeData()
+        if mime_data.hasFormat("application/x-run-ref"):
+            import json
+            try:
+                data = json.loads(mime_data.data("application/x-run-ref").decode())
+                archive_id = data.get("archive_id")
+                run_name = data.get("run_name")
+                if archive_id and run_name:
+                    self.run_dropped.emit(self.pane_id, archive_id, run_name)
+                    event.acceptProposedAction()
+                else:
+                    event.ignore()
+            except (json.JSONDecodeError, ValueError):
+                event.ignore()
+        else:
+            event.ignore()
 
 
 class SplitPaneWidget(QWidget):
@@ -326,6 +356,7 @@ class ViewerWindow(QMainWindow):
         
         # Split pane widget - replaces image_panel and compare_section
         self.split_pane_widget = SplitPaneWidget()
+        self.setup_pane_signals()
         right_layout.addWidget(self.split_pane_widget, 1)
 
         # Playback controls
@@ -505,8 +536,6 @@ class ViewerWindow(QMainWindow):
         """Setup keyboard shortcuts."""
         QShortcut(Qt.Key.Key_Right, self, self.next_frame)
         QShortcut(Qt.Key.Key_Left, self, self.previous_frame)
-        QShortcut(Qt.Key.Key_Up, self, self.swap_previous)
-        QShortcut(Qt.Key.Key_Down, self, self.swap_next)
     
     def set_view_mode(self, mode: str):
         """Switch between single/2-pane/4-pane/swap view modes."""
@@ -515,12 +544,45 @@ class ViewerWindow(QMainWindow):
             self.split_pane_widget.set_layout(mode)
             self.pane_run_refs = {i: None for i in range(self.split_pane_widget.get_pane_count())}
             self.swap_pane_index = 0
+            self.setup_pane_signals()
             self.update_all_panes()
         elif mode == "swap":
             if self.current_view_mode != "swap":
                 self.current_view_mode = "swap"
         else:
             self.info_label.appendPlainText(f"⚠ Unknown view mode: {mode}")
+    
+    def setup_pane_signals(self):
+        """Connect run_dropped signals from all panes to handler."""
+        for pane in self.split_pane_widget.panes.values():
+            pane.run_dropped.connect(self.on_tree_run_dropped)
+    
+    def on_tree_run_dropped(self, pane_id: int, archive_id: str, run_name: str):
+        """Handle a run dropped into a specific pane."""
+        try:
+            # Verify archive and run exist
+            if archive_id not in self.open_archives:
+                self.info_label.appendPlainText(f"⚠ Archive not loaded: {archive_id}")
+                return
+            
+            handler = self.open_archives[archive_id]
+            run_obj = handler.get_run(run_name)
+            if not run_obj:
+                self.info_label.appendPlainText(f"⚠ Run not found: {run_name}")
+                return
+            
+            # Update the pane reference
+            self.pane_run_refs[pane_id] = {
+                "archive_id": archive_id,
+                "run_name": run_name,
+                "label": f"{run_name}"
+            }
+            
+            # Trigger pane update with current frame
+            self.update_all_panes()
+            self.info_label.appendPlainText(f"✓ Loaded '{run_name}' in pane {pane_id}")
+        except Exception as e:
+            self.info_label.appendPlainText(f"❌ Error loading run in pane {pane_id}: {str(e)}")
     
     def clear_current_view(self):
         """Clear all panes in the current view."""
@@ -627,14 +689,14 @@ class ViewerWindow(QMainWindow):
                 f"LiU FS Simulation Viewer - {sim_name} ({len(self.open_archives)} open file(s))"
             )
             
-            self.image_label.setText("Select a run/image-group from the tree to view")
             self.info_label.clear()
             visible_runs = handler.get_runs()
             self.info_label.appendPlainText(
                 f"✓ File loaded successfully\n"
                 f"  File: {Path(file_path).name}\n"
                 f"  Simulation: {sim_name}\n"
-                f"  Runs: {', '.join(visible_runs) if visible_runs else '(none)'}"
+                f"  Runs: {', '.join(visible_runs) if visible_runs else '(none)'}\n"
+                f"  Tip: Drag runs from the tree to the panes above"
             )
 
             warnings = handler.get_validation_warnings()
@@ -642,7 +704,6 @@ class ViewerWindow(QMainWindow):
                 self.info_label.appendPlainText(f"⚠ Warning: {warning}")
 
             self.reset_option_controls()
-            self.refresh_compare_sources()
             self.update_file_actions()
         
         except Exception:
@@ -846,7 +907,8 @@ class ViewerWindow(QMainWindow):
 
             if not versions:
                 self.reset_option_controls()
-                self.image_label.setText("No versions found for this run")
+                self.info_label.clear()
+                self.info_label.appendPlainText("No versions found for this run")
                 self.frame_slider.setMaximum(0)
                 return
 
@@ -862,8 +924,8 @@ class ViewerWindow(QMainWindow):
 
             self.populate_categories_for_version()
         except Exception as e:
-            self.image_label.setText(f"Error: {str(e)}")
-            self.info_label.setText("Failed to load options")
+            self.info_label.clear()
+            self.info_label.appendPlainText(f"❌ Error: {str(e)}")
 
     def populate_categories_for_version(self):
         """Populate category selector based on selected version."""
@@ -888,7 +950,8 @@ class ViewerWindow(QMainWindow):
             self.dataset_combo.setEnabled(False)
             self.item_combo.clear()
             self.item_combo.setEnabled(False)
-            self.image_label.setText("No categories found for selected version")
+            self.info_label.clear()
+            self.info_label.appendPlainText("No categories found for selected version")
             return
 
         self.current_version_name = version_name
@@ -963,28 +1026,6 @@ class ViewerWindow(QMainWindow):
         """Handle item selector change."""
         self.load_selected_media()
 
-    def on_view_mode_changed(self, _index: int):
-        """Handle view mode changes between single/side-by-side/swap."""
-        mode = self.view_mode_combo.currentText()
-        self.compare_section.setVisible(mode == "Side by Side")
-        self.compare_image_label.setVisible(False)
-        self.compare_run_combo.setEnabled(mode in {"Side by Side", "Swap"})
-        self.add_compare_button.setEnabled(mode in {"Side by Side", "Swap"})
-        self.remove_compare_button.setEnabled(mode in {"Side by Side", "Swap"})
-        self.clear_compare_button.setEnabled(mode in {"Side by Side", "Swap"})
-        self.popout_compare_button.setEnabled(mode in {"Side by Side", "Swap"})
-        if mode == "Single":
-            if self.compare_video_player:
-                self.compare_video_player.close()
-                self.compare_video_player = None
-            self.compare_image_label.clear()
-            self.compare_section.hide()
-            self.swap_index = 0
-            for window in self.detached_windows.values():
-                window.close()
-            self.detached_windows.clear()
-            self.update_compare_display_for_frame(self.frame_slider.value())
-
     def get_compare_run_count(self) -> int:
         return len(self.compare_run_refs)
 
@@ -1014,95 +1055,8 @@ class ViewerWindow(QMainWindow):
                 )
         return run_refs
 
-    def refresh_compare_sources(self):
-        """Refresh run-only compare selector from all open archives."""
-        refs = self.collect_run_refs()
-        primary_key = (self.current_archive_id, self.current_run_name)
-        available_keys = {(ref.get("archive_id"), ref.get("run_name")) for ref in refs}
-        self.compare_run_refs = [
-            ref
-            for ref in self.compare_run_refs
-            if (ref.get("archive_id"), ref.get("run_name")) in available_keys
-            and (ref.get("archive_id"), ref.get("run_name")) != primary_key
-        ]
-        current = self.compare_run_combo.currentData()
-        current_key = None
-        if isinstance(current, dict):
-            current_key = (current.get("archive_id"), current.get("run_name"))
-
-        self.compare_run_combo.blockSignals(True)
-        self.compare_run_combo.clear()
-        self.compare_run_combo.addItem("(Select run)", None)
-        for ref in refs:
-            ref_key = (ref.get("archive_id"), ref.get("run_name"))
-            if ref_key == primary_key:
-                continue
-            self.compare_run_combo.addItem(ref["label"], ref)
-        if current_key:
-            for idx in range(self.compare_run_combo.count()):
-                data = self.compare_run_combo.itemData(idx)
-                if isinstance(data, dict) and (data.get("archive_id"), data.get("run_name")) == current_key:
-                    self.compare_run_combo.setCurrentIndex(idx)
-                    break
-        self.compare_run_combo.blockSignals(False)
-        self.update_compare_controls_state()
-
-    def update_compare_controls_state(self):
-        enabled = bool(self.open_archives) and self.view_mode_combo.currentText() in {"Side by Side", "Swap"}
-        self.compare_run_combo.setEnabled(enabled)
-        self.add_compare_button.setEnabled(enabled)
-        self.remove_compare_button.setEnabled(enabled)
-        self.clear_compare_button.setEnabled(enabled)
-        self.popout_compare_button.setEnabled(enabled)
-        self.compare_section.setVisible(self.view_mode_combo.currentText() == "Side by Side" and bool(self.compare_run_refs))
-        self.compare_image_label.setVisible(False)
-
-    def add_compare_run(self):
-        """Add selected run to comparison list."""
-        ref = self.compare_run_combo.currentData()
-        if not isinstance(ref, dict):
-            return
-
-        key = (ref.get("archive_id"), ref.get("run_name"))
-        if key in {(r.get("archive_id"), r.get("run_name")) for r in self.compare_run_refs}:
-            return
-
-        self.compare_run_refs.append(ref)
-        self.selected_compare_index = max(0, len(self.compare_run_refs) - 1)
-        self.swap_index = self.selected_compare_index
-        self.update_compare_views()
-
-    def remove_last_compare_run(self):
-        """Remove the most recently added compare run."""
-        if self.compare_run_refs:
-            self.compare_run_refs.pop()
-            self.selected_compare_index = min(self.selected_compare_index, max(len(self.compare_run_refs) - 1, 0))
-            self.swap_index = min(self.swap_index, max(len(self.compare_run_refs), 0))
-            self.update_compare_views()
-
-    def clear_compare_runs(self):
-        """Clear all compare runs."""
-        self.compare_run_refs.clear()
-        self.selected_compare_index = 0
-        self.swap_index = 0
-        self.update_compare_views()
-
-    def open_compare_window(self):
-        """Open detached windows for primary + compare streams."""
-        self.update_detached_windows()
-        for window in self.detached_windows.values():
-            window.show()
-            window.raise_()
-            window.activateWindow()
-
-    def update_compare_views(self):
-        """Refresh compare panels and swap view from current primary frame."""
-        self.update_compare_controls_state()
-        self.rebuild_compare_panels()
-        self.update_compare_display_for_frame(self.frame_slider.value())
-        self.update_detached_windows()
-
     def get_primary_selection_context(self) -> Dict[str, Any]:
+        """Get the current primary selection context (version, category, dataset, item)."""
         return {
             "archive_id": self.current_archive_id,
             "run_name": self.current_run_name,
@@ -1113,74 +1067,8 @@ class ViewerWindow(QMainWindow):
             "item": self.item_combo.currentText(),
         }
 
-    def rebuild_compare_panels(self):
-        """Rebuild stacked compare panels in the main window."""
-        while self.compare_scroll_layout.count():
-            item = self.compare_scroll_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-
-        if not self.compare_run_refs or self.view_mode_combo.currentText() != "Side by Side":
-            return
-
-        context = self.get_primary_selection_context()
-        total_panels = 1 + len(self.compare_run_refs)
-        available_height = max(self.image_label.height(), 600)
-        panel_height = max(int((available_height - 10 * total_panels) / total_panels), 180)
-
-        primary_panel = self.create_compare_panel(
-            title=f"Primary: {context.get('run_label', self.describe_current_primary_run())}",
-            pixmap=self.get_current_primary_pixmap(),
-            height=panel_height,
-        )
-        self.compare_scroll_layout.addWidget(primary_panel)
-
-        for ref in self.compare_run_refs:
-            panel = self.create_compare_panel(
-                title=f"Compare: {ref.get('label', 'Run')}",
-                pixmap=self.get_compare_run_pixmap(ref, self.frame_slider.value()),
-                height=panel_height,
-            )
-            self.compare_scroll_layout.addWidget(panel)
-
-        self.compare_scroll_layout.addStretch(1)
-
-    def describe_current_primary_run(self) -> str:
-        if not self.current_archive_id or not self.current_run_name:
-            return "Primary"
-        archive_name = Path(self.open_archive_paths.get(self.current_archive_id, self.current_archive_id)).name
-        return f"{archive_name} | {self.current_run_name}"
-
-    def create_compare_panel(self, title: str, pixmap: Optional[QPixmap], height: int) -> QWidget:
-        panel = QWidget()
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        panel.setLayout(layout)
-
-        label = QLabel(title)
-        label.setStyleSheet("font-weight: 600; color: #cccccc;")
-        layout.addWidget(label)
-
-        image = QLabel()
-        image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        image.setStyleSheet("background-color: #1e1e1e; color: #ffffff;")
-        image.setMinimumHeight(height)
-        image.setMaximumHeight(height)
-        if pixmap:
-            image.setPixmap(self.scale_pixmap_to_fit(pixmap, height))
-        else:
-            image.setText("No image available")
-        layout.addWidget(image)
-        return panel
-
-    def get_current_primary_pixmap(self) -> Optional[QPixmap]:
-        return self.image_label.pixmap()
-
-    def scale_pixmap_to_fit(self, pixmap: QPixmap, target_height: int) -> QPixmap:
-        return pixmap.scaledToHeight(max(target_height - 20, 50), Qt.TransformationMode.SmoothTransformation)
-
     def get_compare_run_pixmap(self, ref: Dict[str, Any], frame_index: int) -> Optional[QPixmap]:
+        """Get a frame from a compare run's video."""
         context = self.get_primary_selection_context()
         key = (
             str(ref.get("archive_id")),
@@ -1236,73 +1124,6 @@ class ViewerWindow(QMainWindow):
         self.compare_video_cache[key] = player
         pixmap = player.get_frame(min(frame_index, max(player.get_total_frames() - 1, 0)))
         return pixmap
-
-    def update_detached_windows(self):
-        """Sync detached per-stream windows with current frame."""
-        frame_index = self.frame_slider.value()
-        targets: list[tuple[str, str, Optional[QPixmap]]] = []
-        targets.append((
-            "primary",
-            f"Primary: {self.describe_current_primary_run()}",
-            self.get_current_primary_pixmap(),
-        ))
-        for idx, ref in enumerate(self.compare_run_refs):
-            targets.append((
-                f"compare_{idx}",
-                f"Compare: {ref.get('label', 'Run')}",
-                self.get_compare_run_pixmap(ref, frame_index),
-            ))
-
-        needed_keys = {key for key, _, _ in targets}
-        stale_keys = [key for key in self.detached_windows if key not in needed_keys]
-        for key in stale_keys:
-            self.detached_windows[key].close()
-            del self.detached_windows[key]
-
-        for key, title, pixmap in targets:
-            if key not in self.detached_windows:
-                self.detached_windows[key] = DetachedImageWindow(title)
-            self.detached_windows[key].update_content(title, pixmap)
-
-    def update_compare_display_for_frame(self, frame_index: int):
-        """Render current frame according to selected view mode."""
-        mode = self.view_mode_combo.currentText()
-        if mode == "Single":
-            return
-
-        if mode == "Side by Side":
-            self.rebuild_compare_panels()
-            self.update_detached_windows()
-        elif mode == "Swap":
-            if not self.compare_run_refs:
-                self.image_label.setText("Add runs to compare")
-                return
-            active_ref = self.compare_run_refs[self.swap_index % len(self.compare_run_refs)]
-            pixmap = self.get_compare_run_pixmap(active_ref, frame_index)
-            if pixmap:
-                self.image_label.setPixmap(self.scale_pixmap_to_fit(pixmap, self.image_label.height()))
-                self.image_label.setText("")
-                self.info_label.clear()
-                self.info_label.appendPlainText(
-                    f"Swap view\n"
-                    f"  Primary: {self.describe_current_primary_run()}\n"
-                    f"  Selected: {active_ref.get('label', 'Run')}"
-                )
-            self.update_detached_windows()
-
-    def swap_next(self):
-        """Advance to next compare run in swap mode (Down key)."""
-        if self.view_mode_combo.currentText() != "Swap" or not self.compare_run_refs:
-            return
-        self.swap_index = (self.swap_index + 1) % len(self.compare_run_refs)
-        self.display_frame(self.frame_slider.value())
-
-    def swap_previous(self):
-        """Move to previous compare run in swap mode (Up key)."""
-        if self.view_mode_combo.currentText() != "Swap" or not self.compare_run_refs:
-            return
-        self.swap_index = (self.swap_index - 1) % len(self.compare_run_refs)
-        self.display_frame(self.frame_slider.value())
 
     def load_selected_media(self):
         """Load currently selected video frame set or static image."""
@@ -1548,9 +1369,12 @@ class ViewerWindow(QMainWindow):
         self.display_frame(prev_frame)
 
     def get_current_pixmap(self) -> Optional[QPixmap]:
-        """Return currently displayed pixmap from active view."""
-        pixmap = self.image_label.pixmap()
-        return pixmap if pixmap else None
+        """Return currently displayed pixmap from the primary pane (pane 0)."""
+        pane = self.split_pane_widget.get_pane(0)
+        if pane and pane.label:
+            pixmap = pane.label.pixmap()
+            return pixmap if pixmap else None
+        return None
 
     def export_current_frame(self):
         """Export current frame as image file."""
