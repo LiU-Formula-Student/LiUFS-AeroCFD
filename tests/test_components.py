@@ -7,8 +7,8 @@ import sys
 import os
 from pathlib import Path
 
-# Add app to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Ensure Qt can load in headless CI environments.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -28,19 +28,19 @@ def _is_missing_gui_system_lib(error_message: str) -> bool:
 def test_imports():
     """Test that all modules can be imported."""
     print("Testing module imports...")
-    from liufs_handler import LiufsFileHandler
+    from app.liufs_handler import LiufsFileHandler
     gui_import_errors = []
 
     file_tree_available = True
     try:
-        from file_tree import FileTreeWidget
+        from app.ui.widgets.file_tree import FileTreeWidget
     except Exception as exc:
         file_tree_available = False
         gui_import_errors.append(str(exc))
 
     video_player_available = True
     try:
-        from video_player import VideoPlayer
+        from app.video_player import VideoPlayer
     except Exception as exc:
         video_player_available = False
         gui_import_errors.append(str(exc))
@@ -61,7 +61,7 @@ def test_imports():
 def test_liufs_handler():
     """Test LiufsFileHandler with sample data structure."""
     print("\nTesting LiufsFileHandler...")
-    from liufs_handler import LiufsFileHandler
+    from app.liufs_handler import LiufsFileHandler
 
     # Create a test manifest
     sample_manifest = {
