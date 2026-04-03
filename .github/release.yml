@@ -1,4 +1,43 @@
 changelog:
+  template: |
+    ## Install
+
+    ### Desktop app
+
+    - **Windows**
+      1. Download `liufs-viewer-windows.zip` from **Assets**.
+      2. Extract the zip file.
+      3. Run `liufs-viewer`.
+
+    - **macOS**
+      1. Download `liufs-viewer-macos.zip` from **Assets**.
+      2. Extract the zip file.
+      3. Run `liufs-viewer` from Terminal.
+
+    - **Linux**
+      1. Download `liufs-viewer-linux.tar.gz` from **Assets**.
+      2. Extract it with `tar -xzf liufs-viewer-linux.tar.gz`.
+      3. Run `./liufs-viewer`.
+
+    ### Python CLI/package (`simulation_compressor`)
+
+    - Download the wheel (`*.whl`) from **Assets**.
+    - Install with:
+      ```bash
+      pip install <wheel-file-name>.whl
+      ```
+
+    - Or install from source archive (`*.tar.gz`) with:
+      ```bash
+      pip install <source-archive-name>.tar.gz
+      ```
+
+    ## What's Changed
+    $CHANGES
+
+    ## Contributors
+    $CONTRIBUTORS
+
   exclude:
     labels:
       - skip-changelog

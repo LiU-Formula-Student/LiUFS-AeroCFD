@@ -156,8 +156,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          generate_release_notes: true
-          body_path: .github/RELEASE_TEMPLATE.md
           files: |
             release-assets/liufs-viewer-windows/liufs-viewer-windows.zip
             release-assets/liufs-viewer-macos/liufs-viewer-macos.zip
