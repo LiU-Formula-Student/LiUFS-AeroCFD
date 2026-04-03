@@ -14,13 +14,18 @@ __pycache__/
 pip-wheel-metadata/
 0_research/
 
-*.liufs
 *.mp4
 *.avi
 *.mkv
 *.mov
 *.flv
 *.webm
+*.liufs
+
+# Keep test fixtures for error-handling tests
+!tests/broken_liufs_files/
+!tests/broken_liufs_files/*.liufs
+
 *.tmp
 *.log
 *.bak
