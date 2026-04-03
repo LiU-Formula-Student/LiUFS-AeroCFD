@@ -7,18 +7,8 @@ Or directly:
     python app/__main__.py
 """
 
-import sys
-from .main import ViewerWindow
-from PySide6.QtWidgets import QApplication
-
-
-def main():
-    """Application entry point."""
-    app = QApplication(sys.argv)
-    window = ViewerWindow()
-    window.show()
-    sys.exit(app.exec())
+from .main import main
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
