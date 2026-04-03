@@ -2,13 +2,15 @@
 
 from typing import Dict, Any, List
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QAbstractItemView
-from PySide6.QtCore import Qt, QMimeData, QByteArray
+from PySide6.QtCore import Qt, QMimeData, QByteArray, QPoint, Signal
 from PySide6.QtGui import QPixmap, QDrag
 import json
 
 
 class FileTreeWidget(QTreeWidget):
     """Tree widget showing simulation runs grouped by archive."""
+    
+    run_selected_for_drag = Signal(str, str)  # archive_id, run_name
     
     def __init__(self):
         """Initialize the file tree widget."""
@@ -17,37 +19,71 @@ class FileTreeWidget(QTreeWidget):
         self.setHeaderLabel("Structure")
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setUniformRowHeights(True)
-        self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+        # Don't use DragDropMode - we'll handle it manually
+        self.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
+        self.drag_start_pos = None
+        self.dragging = False
     
-    def startDrag(self, supportedActions):
-        """Support dragging runs to split pane widgets."""
+    def mousePressEvent(self, event):
+        """Track where drag started."""
+        super().mousePressEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_start_pos = event.pos()
+    
+    def mouseMoveEvent(self, event):
+        """Detect drag and initiate if needed."""
+        if (not (event.buttons() & Qt.MouseButton.LeftButton) or 
+            self.drag_start_pos is None):
+            super().mouseMoveEvent(event)
+            return
+        
+        # Only start drag if mouse moved enough
+        distance = (event.pos() - self.drag_start_pos).manhattanLength()
+        if distance < 10:  # 10 pixel threshold
+            super().mouseMoveEvent(event)
+            return
+        
+        # Make sure we have a valid run item selected
         item = self.currentItem()
         if not item:
-            super().startDrag(supportedActions)
+            super().mouseMoveEvent(event)
             return
         
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        if not isinstance(data, dict) or "path" not in data:
-            super().startDrag(supportedActions)
+        if not isinstance(data, dict):
+            super().mouseMoveEvent(event)
             return
         
         path = data.get("path", [])
-        if len(path) != 1:  # Only allow dragging run nodes (path length 1)
+        if len(path) != 1:  # Only drag run nodes
+            super().mouseMoveEvent(event)
             return
         
+        # Create and execute drag
+        self.dragging = True
+        archive_id = data.get("archive_id")
+        run_name = path[0]
+        
         mime_data = QMimeData()
-        # Encode the run reference as JSON in mime data
         run_info = {
-            "archive_id": data.get("archive_id"),
-            "run_name": path[0]
+            "archive_id": archive_id,
+            "run_name": run_name
         }
         mime_data.setData("application/x-run-ref", QByteArray(json.dumps(run_info).encode()))
         
         drag = QDrag(self)
         drag.setMimeData(mime_data)
         drag.setPixmap(QPixmap(24, 24))
-        drag.exec(supportedActions)
+        drag.exec(Qt.DropAction.CopyAction | Qt.DropAction.MoveAction)
+        
+        self.dragging = False
+        self.drag_start_pos = None
     
+    def mouseReleaseEvent(self, event):
+        """Clean up drag state."""
+        self.drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
     def populate_from_manifest(self, manifest: Dict[str, Any]):
         """
         Populate tree from manifest data.
