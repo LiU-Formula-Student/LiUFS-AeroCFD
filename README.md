@@ -146,7 +146,7 @@ The `simulation_compressor` CLI tool is packaged as a standalone Python package 
 Download the wheel (`.whl`) file from the [GitHub Releases](../../releases) page:
 
 ```bash
-pip install aerocfd-1.0b0.post4-py3-none-any.whl
+pip install aerocfd-1.0b0.post5-py3-none-any.whl
 ```
 
 Then run:
