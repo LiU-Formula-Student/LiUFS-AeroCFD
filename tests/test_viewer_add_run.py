@@ -39,7 +39,7 @@ except Exception as exc:  # pragma: no cover - platform dependent
         )
     raise
 
-from app.main import ViewerWindow
+from app.ui.viewer_window import ViewerWindow
 from simulation_compressor.packager import DuplicateRunError
 
 
@@ -57,11 +57,11 @@ def test_add_run_action_is_disabled_until_a_file_is_loaded() -> None:
     try:
         assert not window.add_run_action.isEnabled()
 
-        window.current_liufs_handler = SimpleNamespace(file_path=Path("/tmp/example.liufs"))
+        window.archives.open_archives["arch1"] = SimpleNamespace(file_path=Path("/tmp/example.liufs"))
         window.update_file_actions()
         assert window.add_run_action.isEnabled()
 
-        window.current_liufs_handler = None
+        window.archives.open_archives.clear()
         window.update_file_actions()
         assert not window.add_run_action.isEnabled()
     finally:
@@ -96,14 +96,15 @@ def test_add_new_run_prompts_for_duplicate_and_retries(tmp_path: Path, monkeypat
     def fake_load_liufs_file(self, file_path: str):
         loaded_paths.append(file_path)
 
-    monkeypatch.setattr("app.main.append_run_to_liufs", fake_append_run_to_liufs)
-    monkeypatch.setattr("app.main.QFileDialog.getExistingDirectory", fake_get_existing_directory)
-    monkeypatch.setattr("app.main.QMessageBox.critical", lambda *args, **kwargs: None)
-    monkeypatch.setattr("app.main.QMessageBox.warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.ui.widgets.panes.append_run_to_liufs", fake_append_run_to_liufs)
+    monkeypatch.setattr("app.ui.viewer_window.QFileDialog.getExistingDirectory", fake_get_existing_directory)
+    monkeypatch.setattr("app.ui.viewer_window.QMessageBox.critical", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.ui.viewer_window.QMessageBox.warning", lambda *args, **kwargs: None)
     monkeypatch.setattr(ViewerWindow, "load_liufs_file", fake_load_liufs_file)
     monkeypatch.setattr(ViewerWindow, "prompt_for_run_rename", fake_prompt_for_run_rename)
 
-    window.current_liufs_handler = SimpleNamespace(file_path=archive_path)
+    window.state.set_archive("arch1")
+    window.archives.open_archives["arch1"] = SimpleNamespace(file_path=archive_path)
 
     try:
         window.add_new_run()
