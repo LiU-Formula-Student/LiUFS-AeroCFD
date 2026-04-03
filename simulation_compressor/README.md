@@ -16,7 +16,7 @@ This package scans a simulation directory tree, classifies leaf folders, and the
 Install from a wheel file (available in GitHub releases):
 
 ```bash
-pip install aerocfd-1.0b0.post5-py3-none-any.whl
+pip install aerocfd-1.0b0.post6-py3-none-any.whl
 ```
 
 Or from git:
