@@ -4,7 +4,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from app.main import ViewerWindow
+from app.ui.viewer_window import ViewerWindow
 
 
 def main() -> int:
