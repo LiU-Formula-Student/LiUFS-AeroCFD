@@ -6,10 +6,10 @@ Test script to verify error handling with various broken .liufs files.
 import sys
 from pathlib import Path
 
-# Add app to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from liufs_handler import LiufsFileHandler, LiufsValidationError
+from app.liufs_handler import LiufsFileHandler, LiufsValidationError
 
 
 def test_error_handling():
