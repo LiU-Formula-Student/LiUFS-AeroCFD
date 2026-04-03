@@ -19,7 +19,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
-from app.main import DetachedImageWindow, ImagePane, ViewerWindow
+from app.ui.viewer_window import ViewerWindow
+from app.ui.widgets.panes import DetachedImageWindow, ImagePane
 
 
 def _get_qapp():
