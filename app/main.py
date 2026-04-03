@@ -106,6 +106,7 @@ class DetachedImageWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(title)
         self.setGeometry(150, 150, 1000, 700)
+        self.original_pixmap: Optional[QPixmap] = None
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -126,13 +127,26 @@ class DetachedImageWindow(QMainWindow):
         if pixmap is None:
             self.image_label.setText("No image available")
             self.image_label.setPixmap(QPixmap())
+            self.original_pixmap = None
             return
-        scaled = pixmap.scaled(
+        self.original_pixmap = pixmap
+        self._update_pixmap_display()
+    
+    def _update_pixmap_display(self):
+        """Scale and display the original pixmap to fit current label size."""
+        if not self.original_pixmap:
+            return
+        scaled = self.original_pixmap.scaled(
             self.image_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
         self.image_label.setPixmap(scaled)
+    
+    def resizeEvent(self, event):
+        """Handle window resize events to rescale displayed pixmap."""
+        super().resizeEvent(event)
+        self._update_pixmap_display()
 
 
 class ImagePane(QWidget):
@@ -144,12 +158,18 @@ class ImagePane(QWidget):
         super().__init__()
         self.pane_id = pane_id
         self.run_info: Optional[Dict[str, Any]] = None
+        self.original_pixmap: Optional[QPixmap] = None  # Store original for resizing
         
         layout = QVBoxLayout()
         layout.setContentsMargins(4, 4, 4, 4)
         self.setLayout(layout)
+
+        self.title_label = QLabel(f"Pane {pane_id}")
+        self.title_label.setStyleSheet("color: #cccccc; font-size: 11px; font-weight: 600;")
+        self.title_label.setFixedHeight(20)
+        layout.addWidget(self.title_label)
         
-        self.label = QLabel(f"Pane {pane_id}\n(Drag run here)")
+        self.label = QLabel("(Drag run here)")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setStyleSheet("background-color: #1e1e1e; color: #888888; font-size: 11px;")
         self.label.setMinimumHeight(200)
@@ -160,12 +180,23 @@ class ImagePane(QWidget):
     def set_content(self, title: str, pixmap: Optional[QPixmap]):
         """Update pane content."""
         self.run_info = {"title": title}
+        self.title_label.setText(title)
         if pixmap is None:
-            self.label.setText(f"{title}\n(no image)")
+            self.label.setText("(no image)")
             self.label.setPixmap(QPixmap())
+            self.original_pixmap = None
             return
-        self.label.setText(title)
-        scaled = pixmap.scaled(
+        self.label.setText("")
+        # Store original pixmap for resizing
+        self.original_pixmap = pixmap
+        # Scale to current label size
+        self._update_pixmap_display()
+    
+    def _update_pixmap_display(self):
+        """Scale and display the original pixmap to fit current label size."""
+        if not self.original_pixmap:
+            return
+        scaled = self.original_pixmap.scaled(
             self.label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
@@ -175,9 +206,16 @@ class ImagePane(QWidget):
     def clear(self):
         """Clear pane content."""
         self.run_info = None
+        self.original_pixmap = None
+        self.title_label.setText(f"Pane {self.pane_id}")
         self.label.setPixmap(QPixmap())
-        self.label.setText(f"Pane {self.pane_id}\n(Drag run here)")
+        self.label.setText("(Drag run here)")
         self.label.setStyleSheet("background-color: #1e1e1e; color: #888888; font-size: 11px;")
+    
+    def resizeEvent(self, event):
+        """Handle window resize events to rescale displayed pixmap."""
+        super().resizeEvent(event)
+        self._update_pixmap_display()
     
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Accept drag events with run reference MIME type."""
@@ -192,7 +230,12 @@ class ImagePane(QWidget):
         if mime_data.hasFormat("application/x-run-ref"):
             import json
             try:
-                data = json.loads(mime_data.data("application/x-run-ref").decode())
+                raw_payload = mime_data.data("application/x-run-ref")
+                payload = bytes(raw_payload)
+                if not payload:
+                    event.ignore()
+                    return
+                data = json.loads(payload.decode("utf-8"))
                 archive_id = data.get("archive_id")
                 run_name = data.get("run_name")
                 if archive_id and run_name:
@@ -200,7 +243,7 @@ class ImagePane(QWidget):
                     event.acceptProposedAction()
                 else:
                     event.ignore()
-            except (json.JSONDecodeError, ValueError):
+            except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError):
                 event.ignore()
         else:
             event.ignore()
@@ -241,14 +284,14 @@ class SplitPaneWidget(QWidget):
         
         elif layout_type == "2-pane":
             container = QWidget()
-            h_layout = QHBoxLayout()
-            h_layout.setContentsMargins(0, 0, 0, 0)
-            container.setLayout(h_layout)
+            v_layout = QVBoxLayout()
+            v_layout.setContentsMargins(0, 0, 0, 0)
+            container.setLayout(v_layout)
             
             for i in range(2):
                 pane = ImagePane(i)
                 self.panes[i] = pane
-                h_layout.addWidget(pane)
+                v_layout.addWidget(pane)
             
             self.main_layout.addWidget(container)
         
@@ -560,26 +603,75 @@ class ViewerWindow(QMainWindow):
     def on_tree_run_dropped(self, pane_id: int, archive_id: str, run_name: str):
         """Handle a run dropped into a specific pane."""
         try:
+            if pane_id < 0 or pane_id >= self.split_pane_widget.get_pane_count():
+                self.info_label.appendPlainText(f"⚠ Pane {pane_id} is not available in current view")
+                return
+
             # Verify archive and run exist
             if archive_id not in self.open_archives:
                 self.info_label.appendPlainText(f"⚠ Archive not loaded: {archive_id}")
                 return
             
             handler = self.open_archives[archive_id]
-            run_obj = handler.get_run(run_name)
-            if not run_obj:
+            if run_name not in handler.get_runs():
                 self.info_label.appendPlainText(f"⚠ Run not found: {run_name}")
                 return
             
-            # Update the pane reference
+            archive_label = Path(self.open_archive_paths.get(archive_id, archive_id)).stem
+
+            # Build pane-specific context with first available options
+            runs = handler.manifest.get("runs", {}).get("children", {})
+            run_node = runs.get(run_name, {}) if isinstance(runs, dict) else {}
+            children = run_node.get("children", {}) if isinstance(run_node, dict) else {}
+            versions = [name for name, node in (children.items() if isinstance(children, dict) else []) if isinstance(node, dict)]
+            
+            pane_context = {
+                "archive_id": archive_id,
+                "run_name": run_name,
+                "version": None,
+                "group_path": [],
+                "category": None,
+                "dataset": None,
+                "item": None,
+            }
+            
+            if versions:
+                version_name = sorted(versions)[0]
+                pane_context["version"] = version_name
+                group_path = [run_name, version_name]
+                pane_context["group_path"] = group_path
+                categories = handler.get_group_categories(group_path)
+                
+                if categories:
+                    category_name = sorted(categories.keys())[0]
+                    pane_context["category"] = category_name
+                    datasets = handler.get_category_datasets(group_path, category_name)
+                    
+                    if datasets:
+                        dataset_name = sorted(datasets.keys())[0]
+                        pane_context["dataset"] = dataset_name
+                        dataset_node = datasets.get(dataset_name, {})
+                        items = []
+                        if dataset_node.get("type") == "cfd_images":
+                            items = sorted((dataset_node.get("videos") or {}).keys())
+                        
+                        if items:
+                            pane_context["item"] = items[0]
+            
+            # Update the pane reference with its own context
             self.pane_run_refs[pane_id] = {
                 "archive_id": archive_id,
                 "run_name": run_name,
-                "label": f"{run_name}"
+                "label": f"{archive_label} | {run_name}",
+                "context": pane_context
             }
             
-            # Trigger pane update with current frame
+            # Trigger pane update with current frame (uses pane-specific context)
             self.update_all_panes()
+            
+            # Update frame slider maximum based on loaded panes
+            self.update_slider_maximum()
+            
             self.info_label.appendPlainText(f"✓ Loaded '{run_name}' in pane {pane_id}")
         except Exception as e:
             self.info_label.appendPlainText(f"❌ Error loading run in pane {pane_id}: {str(e)}")
@@ -610,8 +702,13 @@ class ViewerWindow(QMainWindow):
             title = run_ref.get("label", "Run")
             pane.set_content(title, pixmap)
     
-    def get_pixmap_for_pane(self, run_ref: Dict[str, str], frame_index: int) -> Optional[QPixmap]:
+    def get_pixmap_for_pane(self, run_ref: Dict[str, Any], frame_index: int) -> Optional[QPixmap]:
         """Get pixmap for a pane from a run reference."""
+        # Use pane-specific context if available (from drag-and-drop)
+        pane_context = run_ref.get("context")
+        if pane_context:
+            return self.get_pane_pixmap_with_context(run_ref, frame_index, pane_context)
+        
         # If this is the primary run, get from primary video player
         if (run_ref.get("archive_id") == self.current_archive_id and 
             run_ref.get("run_name") == self.current_run_name):
@@ -1008,23 +1105,98 @@ class ViewerWindow(QMainWindow):
         self.item_combo.setEnabled(bool(items))
 
         if items:
-            self.load_selected_media()
+            self.info_label.clear()
+            self.info_label.appendPlainText("Select a plane to load media, or drag a run into any pane.")
 
     def on_version_changed(self, _index: int):
         """Handle version selector change."""
         self.populate_categories_for_version()
+        self.update_pane_contexts_for_selector_change()
+        self.update_all_panes()
+        self.update_slider_maximum()
 
     def on_category_changed(self, _index: int):
         """Handle category selector change."""
         self.populate_datasets_for_category()
+        self.update_pane_contexts_for_selector_change()
+        self.update_all_panes()
+        self.update_slider_maximum()
 
     def on_dataset_changed(self, _index: int):
         """Handle dataset selector change."""
         self.populate_items_for_dataset()
+        self.update_pane_contexts_for_selector_change()
+        self.update_all_panes()
+        self.update_slider_maximum()
 
     def on_item_changed(self, _index: int):
         """Handle item selector change."""
         self.load_selected_media()
+        self.update_pane_contexts_for_selector_change()
+        self.update_all_panes()
+        self.update_slider_maximum()
+    
+    def update_pane_contexts_for_selector_change(self):
+        """Update all pane contexts when selectors change to use new version/category/dataset/item."""
+        if not self.split_pane_widget:
+            return
+        
+        # Get current selector values
+        version_name = self.version_combo.currentText()
+        category_name = self.category_combo.currentText()
+        dataset_name = self.dataset_combo.currentText()
+        item_name = self.item_combo.currentText()
+        
+        if not version_name or not category_name or not dataset_name or not item_name:
+            return
+        
+        # Update context for each pane that has a drag-dropped run
+        for pane_id in range(self.split_pane_widget.get_pane_count()):
+            run_ref = self.pane_run_refs.get(pane_id)
+            if not run_ref or not run_ref.get("context"):
+                continue
+            
+            archive_id = run_ref.get("archive_id")
+            run_name = run_ref.get("run_name")
+            handler = self.open_archives.get(archive_id)
+            if not handler:
+                continue
+            
+            # Verify the new selections are valid for this run
+            group_path = [run_name, version_name]
+            try:
+                # Check if version exists for this run
+                runs = handler.manifest.get("runs", {}).get("children", {})
+                run_node = runs.get(run_name, {})
+                children = run_node.get("children", {})
+                if version_name not in children:
+                    # Version doesn't exist for this run, skip update
+                    continue
+                
+                # Check if category/dataset/item exist
+                categories = handler.get_group_categories(group_path)
+                if category_name not in categories:
+                    continue
+                
+                datasets = handler.get_category_datasets(group_path, category_name)
+                if dataset_name not in datasets:
+                    continue
+                
+                dataset_node = datasets.get(dataset_name, {})
+                if dataset_node.get("type") == "cfd_images":
+                    items = sorted((dataset_node.get("videos") or {}).keys())
+                    if item_name not in items:
+                        continue
+                
+                # All checks passed, update the pane context
+                run_ref["context"]["version"] = version_name
+                run_ref["context"]["category"] = category_name
+                run_ref["context"]["dataset"] = dataset_name
+                run_ref["context"]["item"] = item_name
+                run_ref["context"]["group_path"] = group_path
+            except Exception:
+                # Skip if any error occurs during validation
+                continue
 
     def get_compare_run_count(self) -> int:
         return len(self.compare_run_refs)
@@ -1125,6 +1297,165 @@ class ViewerWindow(QMainWindow):
         pixmap = player.get_frame(min(frame_index, max(player.get_total_frames() - 1, 0)))
         return pixmap
 
+    def get_pane_pixmap_with_context(self, run_ref: Dict[str, Any], frame_index: int, pane_context: Dict[str, Any]) -> Optional[QPixmap]:
+        """Get pixmap for a pane that has its own selection context (from drag-and-drop)."""
+        archive_id = run_ref.get("archive_id")
+        run_name = run_ref.get("run_name")
+        handler = self.open_archives.get(archive_id)
+        if not handler:
+            return None
+        
+        version = pane_context.get("version")
+        category = pane_context.get("category")
+        dataset = pane_context.get("dataset")
+        item = pane_context.get("item")
+        
+        if not isinstance(version, str) or not version:
+            return None
+        
+        group_path = pane_context.get("group_path", [])
+        datasets = handler.get_category_datasets(group_path, category)
+        dataset_node = datasets.get(dataset, {})
+        if not isinstance(dataset_node, dict):
+            return None
+        
+        rel_video_path = (dataset_node.get("videos") or {}).get(item)
+        if not isinstance(rel_video_path, str):
+            return None
+        
+        # Create a cache key that includes the full pane context
+        key = (
+            str(archive_id),
+            str(run_name),
+            str(version),
+            str(category),
+            str(dataset),
+            str(item),
+        )
+        
+        cached_player = self.compare_video_cache.get(key)
+        if cached_player is not None:
+            pixmap = cached_player.get_frame(min(frame_index, max(cached_player.get_total_frames() - 1, 0)))
+            if pixmap:
+                return pixmap
+        
+        archive_path = handler.resolve_archive_path(group_path, rel_video_path)
+        video_data = handler.get_file(archive_path)
+        if not video_data:
+            return None
+        
+        if not self.temp_dir:
+            self.temp_dir = tempfile.mkdtemp()
+        
+        safe_name = hashlib.sha1(
+            f"{key[0]}::{key[1]}::{archive_path}".encode("utf-8")
+        ).hexdigest()
+        temp_video_path = Path(self.temp_dir) / f"pane_{safe_name}.mp4"
+        temp_video_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_video_path.write_bytes(video_data)
+        
+        player = VideoPlayer(str(temp_video_path))
+        self.compare_video_cache[key] = player
+        pixmap = player.get_frame(min(frame_index, max(player.get_total_frames() - 1, 0)))
+        return pixmap
+    
+    def get_video_frame_count_for_pane(self, run_ref: Dict[str, Any]) -> int:
+        """Get frame count for a pane's video without displaying it."""
+        pane_context = run_ref.get("context")
+        if not pane_context:
+            return 0
+        
+        archive_id = run_ref.get("archive_id")
+        run_name = run_ref.get("run_name")
+        handler = self.open_archives.get(archive_id)
+        if not handler:
+            return 0
+        
+        version = pane_context.get("version")
+        category = pane_context.get("category")
+        dataset = pane_context.get("dataset")
+        item = pane_context.get("item")
+        
+        if not isinstance(version, str) or not version:
+            return 0
+        
+        group_path = pane_context.get("group_path", [])
+        datasets = handler.get_category_datasets(group_path, category)
+        dataset_node = datasets.get(dataset, {})
+        if not isinstance(dataset_node, dict):
+            return 0
+        
+        rel_video_path = (dataset_node.get("videos") or {}).get(item)
+        if not isinstance(rel_video_path, str):
+            return 0
+        
+        # Create a cache key
+        key = (
+            str(archive_id),
+            str(run_name),
+            str(version),
+            str(category),
+            str(dataset),
+            str(item),
+        )
+        
+        cached_player = self.compare_video_cache.get(key)
+        if cached_player is not None:
+            return cached_player.get_total_frames()
+        
+        # Try to load it temporarily to get frame count
+        try:
+            archive_path = handler.resolve_archive_path(group_path, rel_video_path)
+            video_data = handler.get_file(archive_path)
+            if not video_data:
+                return 0
+            
+            if not self.temp_dir:
+                self.temp_dir = tempfile.mkdtemp()
+            
+            safe_name = hashlib.sha1(
+                f"{key[0]}::{key[1]}::{archive_path}".encode("utf-8")
+            ).hexdigest()
+            temp_video_path = Path(self.temp_dir) / f"pane_probe_{safe_name}.mp4"
+            temp_video_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_video_path.write_bytes(video_data)
+            
+            player = VideoPlayer(str(temp_video_path))
+            self.compare_video_cache[key] = player
+            return player.get_total_frames()
+        except Exception:
+            return 0
+    
+    def update_slider_maximum(self):
+        """Update frame slider maximum based on currently loaded panes."""
+        if not self.split_pane_widget:
+            return
+        
+        # Collect frame counts from all loaded panes
+        frame_counts = []
+        for pane_id in range(self.split_pane_widget.get_pane_count()):
+            run_ref = self.pane_run_refs.get(pane_id)
+            if run_ref and run_ref.get("context"):
+                count = self.get_video_frame_count_for_pane(run_ref)
+                if count > 0:
+                    frame_counts.append(count)
+        
+        # Also add primary video player if available
+        if self.video_player:
+            frame_counts.append(self.video_player.get_total_frames())
+        
+        # Set slider to minimum of all counts (so all panes can show all frames)
+        if frame_counts:
+            max_frames = min(frame_counts)
+            self.frame_slider.blockSignals(True)
+            self.frame_slider.setMaximum(max(max_frames - 1, 0))
+            self.frame_slider.setValue(0)
+            self.frame_slider.blockSignals(False)
+            self.frame_slider.setEnabled(True)
+        else:
+            self.frame_slider.setMaximum(0)
+            self.frame_slider.setEnabled(False)
+
     def load_selected_media(self):
         """Load currently selected video frame set or static image."""
         if not self.current_liufs_handler:
@@ -1196,9 +1527,11 @@ class ViewerWindow(QMainWindow):
                 self.pane_run_refs[0] = {
                     "archive_id": self.current_archive_id,
                     "run_name": self.current_run_name,
-                    "label": f"{Path(self.open_archive_paths.get(self.current_archive_id, '')).name} | {self.current_run_name}"
+                    "label": f"{Path(self.open_archive_paths.get(self.current_archive_id, '')).stem} | {self.current_run_name}"
                 }
                 self.display_frame(0)
+                self.update_all_panes()
+                self.update_slider_maximum()
                 self.info_label.clear()
                 self.info_label.appendPlainText(
                     f"✓ Loaded: {category_name}/{dataset_name}/{item_name}\n"
@@ -1238,7 +1571,7 @@ class ViewerWindow(QMainWindow):
                 self.pane_run_refs[0] = {
                     "archive_id": self.current_archive_id,
                     "run_name": self.current_run_name,
-                    "label": f"{Path(self.open_archive_paths.get(self.current_archive_id, '')).name} | {self.current_run_name}"
+                    "label": f"{Path(self.open_archive_paths.get(self.current_archive_id, '')).stem} | {self.current_run_name}"
                 }
                 # Display the static image
                 pane = self.split_pane_widget.get_pane(0)
@@ -1267,11 +1600,11 @@ class ViewerWindow(QMainWindow):
             return
 
         try:
-            self.update_all_panes()
-
             self.frame_slider.blockSignals(True)
             self.frame_slider.setValue(frame_index)
             self.frame_slider.blockSignals(False)
+
+            self.update_all_panes()
 
             if self.video_player:
                 frame_count = self.video_player.get_total_frames()
@@ -1279,7 +1612,7 @@ class ViewerWindow(QMainWindow):
                 self.info_label.appendPlainText(f"Frame: {frame_index + 1}/{frame_count}")
             else:
                 self.info_label.clear()
-                self.info_label.appendPlainText(f"Frame n/a (static images)")
+                self.info_label.appendPlainText("Frame n/a (static images)")
         except Exception as e:
             self.info_label.clear()
             self.info_label.appendPlainText(f"⚠ Warning: Failed to display frame\n  {str(e)}")
@@ -1311,7 +1644,8 @@ class ViewerWindow(QMainWindow):
 
     def start_playback(self):
         """Start playback."""
-        if not self.video_player:
+        # Allow playback if we have video player or panes with content
+        if not self.video_player and not any(self.pane_run_refs.values()):
             return
         self.playback_timer.start(self.get_playback_interval_ms())
 
@@ -1322,7 +1656,8 @@ class ViewerWindow(QMainWindow):
     def stop_playback(self):
         """Stop playback and return to frame 0."""
         self.playback_timer.stop()
-        if self.video_player:
+        # Return to frame 0 if we have video or panes
+        if self.video_player or any(self.pane_run_refs.values()):
             self.display_frame(0)
 
     def on_speed_changed(self, _index: int):
@@ -1332,13 +1667,19 @@ class ViewerWindow(QMainWindow):
 
     def advance_playback(self):
         """Advance playback by one synchronized frame."""
-        if not self.video_player:
+        # Get max frame count from video player or panes
+        max_frame = 0
+        if self.video_player:
+            max_frame = self.video_player.get_total_frames() - 1
+            if self.compare_video_player:
+                max_frame = min(max_frame, self.compare_video_player.get_total_frames() - 1)
+        else:
+            # No main video, use frame slider maximum from panes
+            max_frame = self.frame_slider.maximum()
+        
+        if max_frame <= 0:
             self.pause_playback()
             return
-
-        max_frame = self.video_player.get_total_frames() - 1
-        if self.compare_video_player:
-            max_frame = min(max_frame, self.compare_video_player.get_total_frames() - 1)
 
         current = self.frame_slider.value()
         next_frame = current + 1
@@ -1352,19 +1693,35 @@ class ViewerWindow(QMainWindow):
     
     def next_frame(self):
         """Move to next frame."""
-        if not self.video_player:
+        # Get max frame count from video player or panes
+        max_frame = 0
+        if self.video_player:
+            max_frame = self.video_player.get_total_frames() - 1
+        else:
+            # No main video, check frame slider for frame count from panes
+            max_frame = self.frame_slider.maximum()
+        
+        if max_frame <= 0:
             return
         
-        current = self.video_player.current_frame_index
-        next_frame = min(current + 1, self.video_player.get_total_frames() - 1)
+        current = self.frame_slider.value()
+        next_frame = min(current + 1, max_frame)
         self.display_frame(next_frame)
     
     def previous_frame(self):
         """Move to previous frame."""
-        if not self.video_player:
+        # Get max frame count from video player or panes
+        max_frame = 0
+        if self.video_player:
+            max_frame = self.video_player.get_total_frames() - 1
+        else:
+            # No main video, use frame slider for frame count from panes
+            max_frame = self.frame_slider.maximum()
+        
+        if max_frame <= 0:
             return
         
-        current = self.video_player.current_frame_index
+        current = self.frame_slider.value()
         prev_frame = max(current - 1, 0)
         self.display_frame(prev_frame)
 
