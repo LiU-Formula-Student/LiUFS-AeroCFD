@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 
 
 class FileTreeWidget(QTreeWidget):
-    """Tree widget showing simulation runs and image groups as leaf nodes."""
+    """Tree widget showing simulation runs grouped by archive."""
     
     def __init__(self):
         """Initialize the file tree widget."""
@@ -39,13 +39,8 @@ class FileTreeWidget(QTreeWidget):
                 continue
 
             run_item = QTreeWidgetItem([run_name])
-            run_item.setData(0, Qt.ItemDataRole.UserRole, [])
+            run_item.setData(0, Qt.ItemDataRole.UserRole, [run_name])
             root.addChild(run_item)
-
-            for group_name, group_data in run_children.items():
-                group_item = QTreeWidgetItem([group_name])
-                group_item.setData(0, Qt.ItemDataRole.UserRole, [run_name, group_name])
-                run_item.addChild(group_item)
         
         self.expandAll()
 
@@ -88,17 +83,8 @@ class FileTreeWidget(QTreeWidget):
                     continue
 
                 run_item = QTreeWidgetItem([run_name])
-                run_item.setData(0, Qt.ItemDataRole.UserRole, {"archive_id": archive_id, "path": []})
+                run_item.setData(0, Qt.ItemDataRole.UserRole, {"archive_id": archive_id, "path": [run_name]})
                 archive_item.addChild(run_item)
-
-                for group_name in run_children.keys():
-                    group_item = QTreeWidgetItem([group_name])
-                    group_item.setData(
-                        0,
-                        Qt.ItemDataRole.UserRole,
-                        {"archive_id": archive_id, "path": [run_name, group_name]},
-                    )
-                    run_item.addChild(group_item)
 
         self.expandAll()
     

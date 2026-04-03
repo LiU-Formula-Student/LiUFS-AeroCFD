@@ -99,77 +99,159 @@ class AppendRunWorker(QThread):
             self.error.emit(str(e))
 
 
-class CompareWindow(QMainWindow):
-    """Detached window for stacked comparison on a second screen."""
+class DetachedImageWindow(QMainWindow):
+    """Detached single-stream image window for multi-screen comparison."""
 
-    def __init__(self, main_window: "ViewerWindow"):
-        super().__init__(main_window)
-        self.main_window = main_window
-        self.setWindowTitle("Compare Runs")
-        self.setGeometry(150, 150, 1200, 900)
+    def __init__(self, title: str):
+        super().__init__()
+        self.setWindowTitle(title)
+        self.setGeometry(150, 150, 1000, 700)
 
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
 
-        self.title_label = QLabel("Comparisons")
-        self.title_label.setStyleSheet("font-size: 14px; font-weight: 600;")
+        self.title_label = QLabel(title)
+        self.title_label.setStyleSheet("font-size: 13px; font-weight: 600;")
         layout.addWidget(self.title_label)
 
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
-        layout.addWidget(self.scroll)
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setStyleSheet("background-color: #1e1e1e; color: #ffffff;")
+        layout.addWidget(self.image_label)
 
-        self.scroll_widget = QWidget()
-        self.scroll_layout = QVBoxLayout()
-        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
-        self.scroll_widget.setLayout(self.scroll_layout)
-        self.scroll.setWidget(self.scroll_widget)
+    def update_content(self, title: str, pixmap: Optional[QPixmap]):
+        self.setWindowTitle(title)
+        self.title_label.setText(title)
+        if pixmap is None:
+            self.image_label.setText("No image available")
+            self.image_label.setPixmap(QPixmap())
+            return
+        scaled = pixmap.scaled(
+            self.image_label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.image_label.setPixmap(scaled)
 
-    def sync_from_main(self):
-        """Refresh content from the main window state."""
-        primary = self.main_window.describe_current_primary_run()
-        self.title_label.setText(f"Primary: {primary}")
-        self.rebuild_compare_panels()
 
-    def rebuild_compare_panels(self):
-        """Render the compare stack in this window."""
-        while self.scroll_layout.count():
-            item = self.scroll_layout.takeAt(0)
+class ImagePane(QWidget):
+    """Single image display pane with run info."""
+    
+    def __init__(self, pane_id: int):
+        super().__init__()
+        self.pane_id = pane_id
+        self.run_info: Optional[Dict[str, Any]] = None
+        
+        layout = QVBoxLayout()
+        layout.setContentsMargins(4, 4, 4, 4)
+        self.setLayout(layout)
+        
+        self.label = QLabel(f"Pane {pane_id}\n(Drag run here)")
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setStyleSheet("background-color: #1e1e1e; color: #888888; font-size: 11px;")
+        self.label.setMinimumHeight(200)
+        layout.addWidget(self.label)
+    
+    def set_content(self, title: str, pixmap: Optional[QPixmap]):
+        """Update pane content."""
+        self.run_info = {"title": title}
+        if pixmap is None:
+            self.label.setText(f"{title}\n(no image)")
+            self.label.setPixmap(QPixmap())
+            return
+        self.label.setText(title)
+        scaled = pixmap.scaled(
+            self.label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.label.setPixmap(scaled)
+    
+    def clear(self):
+        """Clear pane content."""
+        self.run_info = None
+        self.label.setPixmap(QPixmap())
+        self.label.setText(f"Pane {self.pane_id}\n(Drag run here)")
+        self.label.setStyleSheet("background-color: #1e1e1e; color: #888888; font-size: 11px;")
+
+
+class SplitPaneWidget(QWidget):
+    """Resizable split pane container supporting 1, 2, or 4 panes."""
+    
+    def __init__(self):
+        super().__init__()
+        self.panes: Dict[int, ImagePane] = {}
+        self.current_layout = "single"
+        
+        self.main_layout = QVBoxLayout()
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.main_layout)
+        self.set_layout("single")
+    
+    def set_layout(self, layout_type: str):
+        """Switch between single/2-pane/4-pane layouts."""
+        if layout_type == self.current_layout and self.panes:
+            return
+        
+        # Clear existing layout
+        while self.main_layout.count():
+            item = self.main_layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
-
-        if not self.main_window.compare_run_refs:
-            empty = QLabel("Add runs to compare")
-            self.scroll_layout.addWidget(empty)
-            return
-
-        context = self.main_window.get_primary_selection_context()
-        available_height = max(self.height(), 600)
-        panel_height = max(int((available_height - 40) / (1 + len(self.main_window.compare_run_refs))), 180)
-
-        primary_pixmap = self.main_window.get_current_primary_pixmap()
-        self.scroll_layout.addWidget(
-            self.main_window.create_compare_panel(
-                title=f"Primary: {self.main_window.describe_current_primary_run()}",
-                pixmap=primary_pixmap,
-                height=panel_height,
-            )
-        )
-
-        for ref in self.main_window.compare_run_refs:
-            pixmap = self.main_window.get_compare_run_pixmap(ref, self.main_window.frame_slider.value())
-            self.scroll_layout.addWidget(
-                self.main_window.create_compare_panel(
-                    title=f"Compare: {ref.get('label', 'Run')}",
-                    pixmap=pixmap,
-                    height=panel_height,
-                )
-            )
-
-        self.scroll_layout.addStretch(1)
+        
+        self.panes.clear()
+        self.current_layout = layout_type
+        
+        if layout_type == "single":
+            pane = ImagePane(0)
+            self.panes[0] = pane
+            self.main_layout.addWidget(pane)
+        
+        elif layout_type == "2-pane":
+            container = QWidget()
+            h_layout = QHBoxLayout()
+            h_layout.setContentsMargins(0, 0, 0, 0)
+            container.setLayout(h_layout)
+            
+            for i in range(2):
+                pane = ImagePane(i)
+                self.panes[i] = pane
+                h_layout.addWidget(pane)
+            
+            self.main_layout.addWidget(container)
+        
+        elif layout_type == "4-pane":
+            container = QWidget()
+            grid_layout = QVBoxLayout()
+            grid_layout.setContentsMargins(0, 0, 0, 0)
+            container.setLayout(grid_layout)
+            
+            for row in range(2):
+                row_layout = QHBoxLayout()
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                for col in range(2):
+                    pane_id = row * 2 + col
+                    pane = ImagePane(pane_id)
+                    self.panes[pane_id] = pane
+                    row_layout.addWidget(pane)
+                grid_layout.addLayout(row_layout)
+            
+            self.main_layout.addWidget(container)
+    
+    def get_pane(self, index: int) -> Optional[ImagePane]:
+        """Get pane by index."""
+        return self.panes.get(index)
+    
+    def get_pane_count(self) -> int:
+        """Get number of panes in current layout."""
+        return len(self.panes)
+    
+    def clear_all(self):
+        """Clear all panes."""
+        for pane in self.panes.values():
+            pane.clear()
 
 
 class ViewerWindow(QMainWindow):
@@ -192,6 +274,9 @@ class ViewerWindow(QMainWindow):
         self.compare_video_player: Optional[VideoPlayer] = None
         self.temp_dir: Optional[str] = None
         self.current_group_path: list[str] = []
+        self.current_run_name: Optional[str] = None
+        self.current_version_name: Optional[str] = None
+        self.current_versions: list[str] = []
         self.current_categories: Dict[str, Dict[str, Any]] = {}
         self.current_datasets: Dict[str, Dict[str, Any]] = {}
         self.current_media_type: Optional[str] = None
@@ -199,11 +284,17 @@ class ViewerWindow(QMainWindow):
         self.compare_run_refs: list[Dict[str, Any]] = []
         self.selected_compare_index: int = 0
         self.swap_index: int = 0
-        self.compare_video_cache: Dict[tuple[str, str], VideoPlayer] = {}
+        self.compare_video_cache: Dict[tuple[str, ...], VideoPlayer] = {}
         self.add_run_action = None
         self.append_worker: Optional[AppendRunWorker] = None
         self.current_append_source_dir: Optional[str] = None
-        self.compare_window = None
+        self.detached_windows: Dict[str, DetachedImageWindow] = {}
+        
+        # Split pane state
+        self.split_pane_widget: Optional[SplitPaneWidget] = None
+        self.pane_run_refs: Dict[int, Optional[Dict[str, str]]] = {}
+        self.current_view_mode = "single"
+        self.swap_pane_index = 0
 
         self.playback_timer = QTimer(self)
         self.playback_timer.timeout.connect(self.advance_playback)
@@ -228,91 +319,14 @@ class ViewerWindow(QMainWindow):
         self.file_tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
         splitter.addWidget(self.file_tree)
         
-        # Right panel: Video viewer with slider
+        # Right panel: Video viewer with split panes
         right_panel = QWidget()
         right_layout = QVBoxLayout()
         right_panel.setLayout(right_layout)
         
-        # Mode controls
-        mode_layout = QHBoxLayout()
-        mode_layout.addWidget(QLabel("View Mode"))
-        self.view_mode_combo = QComboBox()
-        self.view_mode_combo.addItems(["Single", "Side by Side", "Swap"])
-        self.view_mode_combo.currentIndexChanged.connect(self.on_view_mode_changed)
-        mode_layout.addWidget(self.view_mode_combo)
-
-        mode_layout.addSpacing(12)
-        mode_layout.addWidget(QLabel("Compare Run"))
-        self.compare_run_combo = QComboBox()
-        self.compare_run_combo.setEnabled(False)
-        mode_layout.addWidget(self.compare_run_combo)
-
-        self.add_compare_button = QPushButton("Add")
-        self.add_compare_button.setEnabled(False)
-        self.add_compare_button.clicked.connect(self.add_compare_run)
-        mode_layout.addWidget(self.add_compare_button)
-
-        self.remove_compare_button = QPushButton("Remove")
-        self.remove_compare_button.setEnabled(False)
-        self.remove_compare_button.clicked.connect(self.remove_last_compare_run)
-        mode_layout.addWidget(self.remove_compare_button)
-
-        self.clear_compare_button = QPushButton("Clear")
-        self.clear_compare_button.setEnabled(False)
-        self.clear_compare_button.clicked.connect(self.clear_compare_runs)
-        mode_layout.addWidget(self.clear_compare_button)
-
-        self.popout_compare_button = QPushButton("Pop Out")
-        self.popout_compare_button.setEnabled(False)
-        self.popout_compare_button.clicked.connect(self.open_compare_window)
-        mode_layout.addWidget(self.popout_compare_button)
-
-        mode_layout.addStretch(1)
-        right_layout.addLayout(mode_layout)
-
-        # Image display area
-        self.image_panel = QWidget()
-        image_layout = QHBoxLayout()
-        image_layout.setContentsMargins(0, 0, 0, 0)
-        self.image_panel.setLayout(image_layout)
-
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet("background-color: #1e1e1e; color: #ffffff;")
-        self.image_label.setMinimumHeight(600)
-        image_layout.addWidget(self.image_label)
-
-        self.compare_image_label = QLabel()
-        self.compare_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.compare_image_label.setStyleSheet("background-color: #1e1e1e; color: #ffffff;")
-        self.compare_image_label.setMinimumHeight(600)
-        self.compare_image_label.hide()
-        image_layout.addWidget(self.compare_image_label)
-
-        right_layout.addWidget(self.image_panel)
-
-        self.compare_section = QWidget()
-        compare_section_layout = QVBoxLayout()
-        compare_section_layout.setContentsMargins(0, 0, 0, 0)
-        self.compare_section.setLayout(compare_section_layout)
-
-        self.compare_section_title = QLabel("Comparisons")
-        compare_section_layout.addWidget(self.compare_section_title)
-
-        self.compare_scroll = QScrollArea()
-        self.compare_scroll.setWidgetResizable(True)
-        self.compare_scroll.setMinimumHeight(220)
-        self.compare_scroll.setFrameShape(QFrame.Shape.NoFrame)
-
-        self.compare_scroll_widget = QWidget()
-        self.compare_scroll_layout = QVBoxLayout()
-        self.compare_scroll_layout.setContentsMargins(0, 0, 0, 0)
-        self.compare_scroll_widget.setLayout(self.compare_scroll_layout)
-        self.compare_scroll.setWidget(self.compare_scroll_widget)
-        compare_section_layout.addWidget(self.compare_scroll)
-
-        self.compare_section.hide()
-        right_layout.addWidget(self.compare_section)
+        # Split pane widget - replaces image_panel and compare_section
+        self.split_pane_widget = SplitPaneWidget()
+        right_layout.addWidget(self.split_pane_widget, 1)
 
         # Playback controls
         playback_layout = QHBoxLayout()
@@ -351,8 +365,13 @@ class ViewerWindow(QMainWindow):
         self.frame_slider.valueChanged.connect(self.on_slider_value_changed)
         right_layout.addWidget(self.frame_slider)
 
-        # Controls for category/dataset/item selection
+        # Controls for version/category/dataset/item selection
         controls_layout = QHBoxLayout()
+
+        version_label = QLabel("Version")
+        self.version_combo = QComboBox()
+        self.version_combo.setEnabled(False)
+        self.version_combo.currentIndexChanged.connect(self.on_version_changed)
 
         category_label = QLabel("Category")
         self.category_combo = QComboBox()
@@ -364,11 +383,14 @@ class ViewerWindow(QMainWindow):
         self.dataset_combo.setEnabled(False)
         self.dataset_combo.currentIndexChanged.connect(self.on_dataset_changed)
 
-        item_label = QLabel("Item")
+        item_label = QLabel("Plane")
         self.item_combo = QComboBox()
         self.item_combo.setEnabled(False)
         self.item_combo.currentIndexChanged.connect(self.on_item_changed)
 
+        controls_layout.addWidget(version_label)
+        controls_layout.addWidget(self.version_combo)
+        controls_layout.addSpacing(16)
         controls_layout.addWidget(category_label)
         controls_layout.addWidget(self.category_combo)
         controls_layout.addSpacing(16)
@@ -429,6 +451,30 @@ class ViewerWindow(QMainWindow):
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
 
+        # View menu
+        view_menu = menubar.addMenu("&View")
+        
+        single_view_action = view_menu.addAction("&Single View")
+        single_view_action.triggered.connect(lambda: self.set_view_mode("single"))
+        
+        view_menu.addSeparator()
+        
+        split_2_action = view_menu.addAction("&Split Screen: 2 Panes")
+        split_2_action.triggered.connect(lambda: self.set_view_mode("2-pane"))
+        
+        split_4_action = view_menu.addAction("S&plit Screen: 4 Panes")
+        split_4_action.triggered.connect(lambda: self.set_view_mode("4-pane"))
+        
+        view_menu.addSeparator()
+        
+        swap_action = view_menu.addAction("&Swap View (Cycle)")
+        swap_action.triggered.connect(lambda: self.set_view_mode("swap"))
+        
+        view_menu.addSeparator()
+        
+        clear_view_action = view_menu.addAction("&Clear Current View")
+        clear_view_action.triggered.connect(self.clear_current_view)
+
         # Help menu
         help_menu = menubar.addMenu("&Help")
 
@@ -461,6 +507,58 @@ class ViewerWindow(QMainWindow):
         QShortcut(Qt.Key.Key_Left, self, self.previous_frame)
         QShortcut(Qt.Key.Key_Up, self, self.swap_previous)
         QShortcut(Qt.Key.Key_Down, self, self.swap_next)
+    
+    def set_view_mode(self, mode: str):
+        """Switch between single/2-pane/4-pane/swap view modes."""
+        if mode in {"single", "2-pane", "4-pane"}:
+            self.current_view_mode = mode
+            self.split_pane_widget.set_layout(mode)
+            self.pane_run_refs = {i: None for i in range(self.split_pane_widget.get_pane_count())}
+            self.swap_pane_index = 0
+            self.update_all_panes()
+        elif mode == "swap":
+            if self.current_view_mode != "swap":
+                self.current_view_mode = "swap"
+        else:
+            self.info_label.appendPlainText(f"⚠ Unknown view mode: {mode}")
+    
+    def clear_current_view(self):
+        """Clear all panes in the current view."""
+        self.pane_run_refs = {i: None for i in range(self.split_pane_widget.get_pane_count())}
+        self.split_pane_widget.clear_all()
+        self.info_label.appendPlainText("✓ Cleared current view")
+    
+    def update_all_panes(self):
+        """Update all panes with current frame from loaded runs."""
+        if not self.split_pane_widget:
+            return
+        
+        frame_index = self.frame_slider.value()
+        for pane_id in range(self.split_pane_widget.get_pane_count()):
+            pane = self.split_pane_widget.get_pane(pane_id)
+            if not pane:
+                continue
+            
+            run_ref = self.pane_run_refs.get(pane_id)
+            if not run_ref:
+                pane.clear()
+                continue
+            
+            pixmap = self.get_pixmap_for_pane(run_ref, frame_index)
+            title = run_ref.get("label", "Run")
+            pane.set_content(title, pixmap)
+    
+    def get_pixmap_for_pane(self, run_ref: Dict[str, str], frame_index: int) -> Optional[QPixmap]:
+        """Get pixmap for a pane from a run reference."""
+        # If this is the primary run, get from primary video player
+        if (run_ref.get("archive_id") == self.current_archive_id and 
+            run_ref.get("run_name") == self.current_run_name):
+            if self.video_player:
+                return self.video_player.get_frame(frame_index)
+            return None
+        
+        # Otherwise, get from compare video cache
+        return self.get_compare_run_pixmap(run_ref, frame_index)
     
     def open_file(self):
         """Open a .liufs file."""
@@ -700,61 +798,111 @@ class ViewerWindow(QMainWindow):
             self.current_archive_id = archive_id
             self.current_liufs_handler = self.open_archives[archive_id]
 
-        if len(path) != 2:
+        if len(path) != 1:
             self.reset_option_controls()
             return
 
-        self.load_group_node(path)
+        self.load_run_node(path[0])
 
     def reset_option_controls(self):
-        """Reset category/dataset/item selectors."""
+        """Reset version/category/dataset/item selectors."""
+        self.current_run_name = None
+        self.current_version_name = None
+        self.current_versions = []
         self.current_group_path = []
         self.current_categories = {}
         self.current_datasets = {}
 
+        self.version_combo.blockSignals(True)
         self.category_combo.blockSignals(True)
         self.dataset_combo.blockSignals(True)
         self.item_combo.blockSignals(True)
 
+        self.version_combo.clear()
         self.category_combo.clear()
         self.dataset_combo.clear()
         self.item_combo.clear()
 
+        self.version_combo.blockSignals(False)
         self.category_combo.blockSignals(False)
         self.dataset_combo.blockSignals(False)
         self.item_combo.blockSignals(False)
 
+        self.version_combo.setEnabled(False)
         self.category_combo.setEnabled(False)
         self.dataset_combo.setEnabled(False)
         self.item_combo.setEnabled(False)
 
-    def load_group_node(self, group_path: list[str]):
-        """Load available categories from selected [run, image_group]."""
+    def load_run_node(self, run_name: str):
+        """Load available versions from selected run."""
         if not self.current_liufs_handler:
             return
 
         try:
-            categories = self.current_liufs_handler.get_group_categories(group_path)
-            if not categories:
+            runs = self.current_liufs_handler.manifest.get("runs", {}).get("children", {})
+            run_node = runs.get(run_name, {}) if isinstance(runs, dict) else {}
+            children = run_node.get("children", {}) if isinstance(run_node, dict) else {}
+            versions = [name for name, node in (children.items() if isinstance(children, dict) else []) if isinstance(node, dict)]
+
+            if not versions:
                 self.reset_option_controls()
-                self.image_label.setText("No categories found for this node")
+                self.image_label.setText("No versions found for this run")
                 self.frame_slider.setMaximum(0)
                 return
 
-            self.current_group_path = group_path
-            self.current_categories = categories
+            self.current_run_name = run_name
+            self.current_versions = sorted(versions)
 
-            self.category_combo.blockSignals(True)
-            self.category_combo.clear()
-            for category_name in sorted(categories.keys()):
-                self.category_combo.addItem(category_name)
-            self.category_combo.blockSignals(False)
-            self.category_combo.setEnabled(True)
+            self.version_combo.blockSignals(True)
+            self.version_combo.clear()
+            for version_name in self.current_versions:
+                self.version_combo.addItem(version_name)
+            self.version_combo.blockSignals(False)
+            self.version_combo.setEnabled(True)
 
-            self.populate_datasets_for_category()
+            self.populate_categories_for_version()
         except Exception as e:
             self.image_label.setText(f"Error: {str(e)}")
             self.info_label.setText("Failed to load options")
+
+    def populate_categories_for_version(self):
+        """Populate category selector based on selected version."""
+        if not self.current_liufs_handler or not self.current_run_name:
+            return
+
+        version_name = self.version_combo.currentText()
+        if not version_name:
+            return
+
+        group_path = [self.current_run_name, version_name]
+        self.current_version_name = version_name
+        categories = self.current_liufs_handler.get_group_categories(group_path)
+        if not categories:
+            self.current_group_path = group_path
+            self.current_categories = {}
+            self.category_combo.blockSignals(True)
+            self.category_combo.clear()
+            self.category_combo.blockSignals(False)
+            self.category_combo.setEnabled(False)
+            self.dataset_combo.clear()
+            self.dataset_combo.setEnabled(False)
+            self.item_combo.clear()
+            self.item_combo.setEnabled(False)
+            self.image_label.setText("No categories found for selected version")
+            return
+
+        self.current_version_name = version_name
+        self.current_group_path = group_path
+        self.current_categories = categories
+
+        self.category_combo.blockSignals(True)
+        self.category_combo.clear()
+        for category_name in sorted(categories.keys()):
+            self.category_combo.addItem(category_name)
+        self.category_combo.blockSignals(False)
+        self.category_combo.setEnabled(True)
+
+        self.populate_datasets_for_category()
 
     def populate_datasets_for_category(self):
         """Populate dataset selector based on selected category."""
@@ -799,6 +947,10 @@ class ViewerWindow(QMainWindow):
         if items:
             self.load_selected_media()
 
+    def on_version_changed(self, _index: int):
+        """Handle version selector change."""
+        self.populate_categories_for_version()
+
     def on_category_changed(self, _index: int):
         """Handle category selector change."""
         self.populate_datasets_for_category()
@@ -828,6 +980,9 @@ class ViewerWindow(QMainWindow):
             self.compare_image_label.clear()
             self.compare_section.hide()
             self.swap_index = 0
+            for window in self.detached_windows.values():
+                window.close()
+            self.detached_windows.clear()
             self.update_compare_display_for_frame(self.frame_slider.value())
 
     def get_compare_run_count(self) -> int:
@@ -862,6 +1017,14 @@ class ViewerWindow(QMainWindow):
     def refresh_compare_sources(self):
         """Refresh run-only compare selector from all open archives."""
         refs = self.collect_run_refs()
+        primary_key = (self.current_archive_id, self.current_run_name)
+        available_keys = {(ref.get("archive_id"), ref.get("run_name")) for ref in refs}
+        self.compare_run_refs = [
+            ref
+            for ref in self.compare_run_refs
+            if (ref.get("archive_id"), ref.get("run_name")) in available_keys
+            and (ref.get("archive_id"), ref.get("run_name")) != primary_key
+        ]
         current = self.compare_run_combo.currentData()
         current_key = None
         if isinstance(current, dict):
@@ -871,6 +1034,9 @@ class ViewerWindow(QMainWindow):
         self.compare_run_combo.clear()
         self.compare_run_combo.addItem("(Select run)", None)
         for ref in refs:
+            ref_key = (ref.get("archive_id"), ref.get("run_name"))
+            if ref_key == primary_key:
+                continue
             self.compare_run_combo.addItem(ref["label"], ref)
         if current_key:
             for idx in range(self.compare_run_combo.count()):
@@ -922,24 +1088,25 @@ class ViewerWindow(QMainWindow):
         self.update_compare_views()
 
     def open_compare_window(self):
-        """Open a separate compare window for multi-screen workflows."""
-        if self.compare_window is None:
-            self.compare_window = CompareWindow(self)
-        self.compare_window.show()
-        self.compare_window.raise_()
-        self.compare_window.activateWindow()
+        """Open detached windows for primary + compare streams."""
+        self.update_detached_windows()
+        for window in self.detached_windows.values():
+            window.show()
+            window.raise_()
+            window.activateWindow()
 
     def update_compare_views(self):
         """Refresh compare panels and swap view from current primary frame."""
         self.update_compare_controls_state()
         self.rebuild_compare_panels()
         self.update_compare_display_for_frame(self.frame_slider.value())
-        if self.compare_window:
-            self.compare_window.sync_from_main()
+        self.update_detached_windows()
 
     def get_primary_selection_context(self) -> Dict[str, Any]:
         return {
             "archive_id": self.current_archive_id,
+            "run_name": self.current_run_name,
+            "version": self.current_version_name,
             "group_path": list(self.current_group_path),
             "category": self.category_combo.currentText(),
             "dataset": self.dataset_combo.currentText(),
@@ -980,10 +1147,10 @@ class ViewerWindow(QMainWindow):
         self.compare_scroll_layout.addStretch(1)
 
     def describe_current_primary_run(self) -> str:
-        if not self.current_archive_id or not self.current_group_path:
+        if not self.current_archive_id or not self.current_run_name:
             return "Primary"
         archive_name = Path(self.open_archive_paths.get(self.current_archive_id, self.current_archive_id)).name
-        return f"{archive_name} | {self.current_group_path[0]}"
+        return f"{archive_name} | {self.current_run_name}"
 
     def create_compare_panel(self, title: str, pixmap: Optional[QPixmap], height: int) -> QWidget:
         panel = QWidget()
@@ -1014,7 +1181,15 @@ class ViewerWindow(QMainWindow):
         return pixmap.scaledToHeight(max(target_height - 20, 50), Qt.TransformationMode.SmoothTransformation)
 
     def get_compare_run_pixmap(self, ref: Dict[str, Any], frame_index: int) -> Optional[QPixmap]:
-        key = (str(ref.get("archive_id")), str(ref.get("run_name")))
+        context = self.get_primary_selection_context()
+        key = (
+            str(ref.get("archive_id")),
+            str(ref.get("run_name")),
+            str(context.get("version") or ""),
+            str(context.get("category") or ""),
+            str(context.get("dataset") or ""),
+            str(context.get("item") or ""),
+        )
         cached_player = self.compare_video_cache.get(key)
         if cached_player is not None:
             pixmap = cached_player.get_frame(min(frame_index, max(cached_player.get_total_frames() - 1, 0)))
@@ -1025,15 +1200,14 @@ class ViewerWindow(QMainWindow):
         if not handler:
             return None
 
-        primary_context = self.get_primary_selection_context()
-        group_path = primary_context.get("group_path")
-        category = primary_context.get("category")
-        dataset = primary_context.get("dataset")
-        item = primary_context.get("item")
-        if not isinstance(group_path, list) or len(group_path) < 2:
+        version = context.get("version")
+        category = context.get("category")
+        dataset = context.get("dataset")
+        item = context.get("item")
+        if not isinstance(version, str) or not version:
             return None
 
-        compare_group_path = [ref.get("run_name"), group_path[1]]
+        compare_group_path = [ref.get("run_name"), version]
         datasets = handler.get_category_datasets(compare_group_path, category)
         dataset_node = datasets.get(dataset, {})
         if not isinstance(dataset_node, dict):
@@ -1063,6 +1237,33 @@ class ViewerWindow(QMainWindow):
         pixmap = player.get_frame(min(frame_index, max(player.get_total_frames() - 1, 0)))
         return pixmap
 
+    def update_detached_windows(self):
+        """Sync detached per-stream windows with current frame."""
+        frame_index = self.frame_slider.value()
+        targets: list[tuple[str, str, Optional[QPixmap]]] = []
+        targets.append((
+            "primary",
+            f"Primary: {self.describe_current_primary_run()}",
+            self.get_current_primary_pixmap(),
+        ))
+        for idx, ref in enumerate(self.compare_run_refs):
+            targets.append((
+                f"compare_{idx}",
+                f"Compare: {ref.get('label', 'Run')}",
+                self.get_compare_run_pixmap(ref, frame_index),
+            ))
+
+        needed_keys = {key for key, _, _ in targets}
+        stale_keys = [key for key in self.detached_windows if key not in needed_keys]
+        for key in stale_keys:
+            self.detached_windows[key].close()
+            del self.detached_windows[key]
+
+        for key, title, pixmap in targets:
+            if key not in self.detached_windows:
+                self.detached_windows[key] = DetachedImageWindow(title)
+            self.detached_windows[key].update_content(title, pixmap)
+
     def update_compare_display_for_frame(self, frame_index: int):
         """Render current frame according to selected view mode."""
         mode = self.view_mode_combo.currentText()
@@ -1071,8 +1272,7 @@ class ViewerWindow(QMainWindow):
 
         if mode == "Side by Side":
             self.rebuild_compare_panels()
-            if self.compare_window:
-                self.compare_window.rebuild_compare_panels()
+            self.update_detached_windows()
         elif mode == "Swap":
             if not self.compare_run_refs:
                 self.image_label.setText("Add runs to compare")
@@ -1088,6 +1288,7 @@ class ViewerWindow(QMainWindow):
                     f"  Primary: {self.describe_current_primary_run()}\n"
                     f"  Selected: {active_ref.get('label', 'Run')}"
                 )
+            self.update_detached_windows()
 
     def swap_next(self):
         """Advance to next compare run in swap mode (Down key)."""
@@ -1124,7 +1325,6 @@ class ViewerWindow(QMainWindow):
             if data_type == "cfd_images":
                 rel_video_path = (dataset_node.get("videos") or {}).get(item_name)
                 if not isinstance(rel_video_path, str):
-                    self.image_label.setText("Selected plane video is missing in manifest")
                     self.info_label.clear()
                     self.info_label.appendPlainText("⚠ Warning: Video path not found in manifest")
                     return
@@ -1132,7 +1332,6 @@ class ViewerWindow(QMainWindow):
                 archive_path = self.current_liufs_handler.resolve_archive_path(self.current_group_path, rel_video_path)
                 video_data = self.current_liufs_handler.get_file(archive_path)
                 if not video_data:
-                    self.image_label.setText("Error: Cannot extract video file")
                     self.info_label.clear()
                     self.info_label.appendPlainText(f"❌ Error: Video file not found in archive\n  Path: {archive_path}")
                     return
@@ -1149,7 +1348,6 @@ class ViewerWindow(QMainWindow):
                 try:
                     self.video_player = VideoPlayer(str(temp_video_path))
                 except Exception as e:
-                    self.image_label.setText("Error: Cannot read video file")
                     self.info_label.clear()
                     self.info_label.appendPlainText(
                         f"❌ Error: Cannot play video\n"
@@ -1173,20 +1371,23 @@ class ViewerWindow(QMainWindow):
                 self.frame_slider.setValue(0)
                 self.frame_slider.setEnabled(frame_count > 0)
 
+                # Set primary run reference for pane 0
+                self.pane_run_refs[0] = {
+                    "archive_id": self.current_archive_id,
+                    "run_name": self.current_run_name,
+                    "label": f"{Path(self.open_archive_paths.get(self.current_archive_id, '')).name} | {self.current_run_name}"
+                }
                 self.display_frame(0)
                 self.info_label.clear()
                 self.info_label.appendPlainText(
                     f"✓ Loaded: {category_name}/{dataset_name}/{item_name}\n"
                     f"  Frames: {frame_count} | FPS: {self.video_player.fps:.2f}"
                 )
-                self.refresh_compare_sources()
-                self.update_compare_views()
 
             elif data_type == "3d_views":
                 files = dataset_node.get("files") or []
                 matching = [path for path in files if isinstance(path, str) and Path(path).name == item_name]
                 if not matching:
-                    self.image_label.setText("Selected image is missing in manifest")
                     self.info_label.clear()
                     self.info_label.appendPlainText("⚠ Warning: Image path not found in manifest")
                     return
@@ -1194,7 +1395,6 @@ class ViewerWindow(QMainWindow):
                 archive_path = self.current_liufs_handler.resolve_archive_path(self.current_group_path, matching[0])
                 image_data = self.current_liufs_handler.get_file(archive_path)
                 if not image_data:
-                    self.image_label.setText("Error: Cannot extract image file")
                     self.info_label.clear()
                     self.info_label.appendPlainText(f"❌ Error: Image file not found in archive\n  Path: {archive_path}")
                     return
@@ -1205,85 +1405,61 @@ class ViewerWindow(QMainWindow):
 
                 pixmap = QPixmap()
                 if not pixmap.loadFromData(image_data):
-                    self.image_label.setText("Error: Failed to decode image")
                     self.info_label.clear()
                     self.info_label.appendPlainText("❌ Error: Cannot read image file\n  The file may be corrupted or in an unsupported format")
                     return
 
-                scaled = pixmap.scaledToHeight(600, Qt.TransformationMode.SmoothTransformation)
-                self.image_label.setPixmap(scaled)
                 self.current_media_type = "image"
                 self.primary_source = None
                 self.frame_slider.setMaximum(0)
                 self.frame_slider.setEnabled(False)
+                # Set primary run reference for pane 0
+                self.pane_run_refs[0] = {
+                    "archive_id": self.current_archive_id,
+                    "run_name": self.current_run_name,
+                    "label": f"{Path(self.open_archive_paths.get(self.current_archive_id, '')).name} | {self.current_run_name}"
+                }
+                # Display the static image
+                pane = self.split_pane_widget.get_pane(0)
+                if pane:
+                    pane.set_content(f"{category_name}/{dataset_name}/{item_name}", pixmap)
                 self.info_label.clear()
                 self.info_label.appendPlainText(
                     f"✓ Loaded: {category_name}/{dataset_name}/{item_name}\n"
                     f"  Size: {pixmap.width()}x{pixmap.height()} px"
                 )
-                self.refresh_compare_sources()
-                self.update_compare_views()
             else:
-                self.image_label.setText(f"Unknown media type: {data_type}")
                 self.info_label.clear()
                 self.info_label.appendPlainText(f"⚠ Warning: Unknown media type '{data_type}'")
         except Exception as e:
-            self.image_label.setText("Error loading media")
             self.info_label.clear()
             self.info_label.appendPlainText(f"❌ Error: {str(e)}")
     
     def display_frame(self, frame_index: int):
         """
-        Display a specific frame.
+        Display a specific frame in all panes.
         
         Args:
             frame_index: Index of frame to display
         """
-        if not self.video_player:
+        if not self.video_player and not self.pane_run_refs:
             return
 
-        mode = self.view_mode_combo.currentText()
-
         try:
-            active_player = self.video_player
-            active_label = "Primary"
-            if mode == "Swap" and self.compare_run_refs:
-                active_ref = self.compare_run_refs[self.swap_index % len(self.compare_run_refs)]
-                pixmap = self.get_compare_run_pixmap(active_ref, frame_index)
-                active_label = active_ref.get("label", "Run")
-            else:
-                pixmap = active_player.get_frame(frame_index)
-            if not pixmap:
-                self.image_label.setText(f"Error: Cannot read frame {frame_index}")
-                return
-            
-            # Scale to fit label while maintaining aspect ratio
-            scaled_pixmap = pixmap.scaledToHeight(
-                self.image_label.height() - 20,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.image_label.setPixmap(scaled_pixmap)
-            self.update_compare_display_for_frame(frame_index)
+            self.update_all_panes()
 
             self.frame_slider.blockSignals(True)
             self.frame_slider.setValue(frame_index)
             self.frame_slider.blockSignals(False)
 
-            current_frame = frame_index
-            total_frames = active_player.get_total_frames() if mode != "Swap" or not self.compare_run_refs else max(1, frame_index + 1)
-            self.info_label.clear()
-            if mode == "Swap" and self.compare_run_refs:
-                self.info_label.appendPlainText(
-                    f"Frame: {current_frame + 1}/{total_frames}\n"
-                    f"Primary: {self.describe_current_primary_run()}\n"
-                    f"Selected: {active_label}"
-                )
+            if self.video_player:
+                frame_count = self.video_player.get_total_frames()
+                self.info_label.clear()
+                self.info_label.appendPlainText(f"Frame: {frame_index + 1}/{frame_count}")
             else:
-                self.info_label.appendPlainText(f"Frame: {current_frame + 1}/{total_frames}")
-            if mode == "Side by Side":
-                self.update_compare_display_for_frame(frame_index)
+                self.info_label.clear()
+                self.info_label.appendPlainText(f"Frame n/a (static images)")
         except Exception as e:
-            self.image_label.setText(f"Error displaying frame: {str(e)}")
             self.info_label.clear()
             self.info_label.appendPlainText(f"⚠ Warning: Failed to display frame\n  {str(e)}")
 
@@ -1437,6 +1613,8 @@ class ViewerWindow(QMainWindow):
             self.compare_video_player.close()
         for player in self.compare_video_cache.values():
             player.close()
+        for window in self.detached_windows.values():
+            window.close()
         
         # Clean up temp directory
         if self.temp_dir:
