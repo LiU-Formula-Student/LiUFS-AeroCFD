@@ -9,15 +9,42 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch, call
 from typing import Optional, Dict, Any
 
+import pytest
+
 # Add project root to path so package imports resolve correctly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Ensure Qt can load in headless CI environments
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication
+def _is_missing_gui_system_lib(error_message: str) -> bool:
+    """Return True when import failed due to missing OS-level GUI libraries."""
+    missing_markers = [
+        "libEGL.so.1",
+        "libGL.so.1",
+        "libxcb",
+        "could not load the Qt platform plugin",
+    ]
+    lowered = error_message.lower()
+    return any(marker.lower() in lowered for marker in missing_markers)
+
+
+def _is_missing_qt_python_package(exc: Exception) -> bool:
+    """Return True when PySide6 itself is not installed."""
+    return isinstance(exc, ModuleNotFoundError) and getattr(exc, "name", None) == "PySide6"
+
+
+try:
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QPixmap
+    from PySide6.QtWidgets import QApplication
+except Exception as exc:  # pragma: no cover - platform dependent
+    if _is_missing_qt_python_package(exc) or _is_missing_gui_system_lib(str(exc)):
+        pytest.skip(
+            "Skipping GUI pane tests: missing system GUI libraries in CI environment",
+            allow_module_level=True,
+        )
+    raise
 
 from app.ui.viewer_window import ViewerWindow
 from app.ui.widgets.panes import DetachedImageWindow, ImagePane
