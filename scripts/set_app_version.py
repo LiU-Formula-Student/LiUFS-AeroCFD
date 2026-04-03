@@ -88,7 +88,7 @@ def main() -> int:
     for relative_path in [
         "README.md",
         "simulation_compressor/README.md",
-        "PACKAGING.md",
+        "docs/PACKAGING.md",
     ]:
         path = root / relative_path
         text = path.read_text(encoding="utf-8")
