@@ -31,16 +31,75 @@ class FileTreeWidget(QTreeWidget):
         
         runs = manifest.get("runs", {}).get("children", {})
         for run_name, run_data in runs.items():
+            if not isinstance(run_data, dict):
+                continue
+
+            run_children = run_data.get("children")
+            if not isinstance(run_children, dict):
+                continue
+
             run_item = QTreeWidgetItem([run_name])
             run_item.setData(0, Qt.ItemDataRole.UserRole, [])
             root.addChild(run_item)
 
-            run_children = run_data.get("children", {}) if isinstance(run_data, dict) else {}
             for group_name, group_data in run_children.items():
                 group_item = QTreeWidgetItem([group_name])
                 group_item.setData(0, Qt.ItemDataRole.UserRole, [run_name, group_name])
                 run_item.addChild(group_item)
         
+        self.expandAll()
+
+    def populate_from_archives(self, archives: List[Dict[str, Any]]):
+        """Populate tree from multiple open archives.
+
+        Expected archive item shape:
+        {
+            "archive_id": str,
+            "label": str,
+            "manifest": dict,
+        }
+        """
+        self.clear()
+
+        root = QTreeWidgetItem(["Open .liufs Files"])
+        self.addTopLevelItem(root)
+
+        for archive in archives:
+            archive_id = archive.get("archive_id")
+            label = archive.get("label", "Archive")
+            manifest = archive.get("manifest", {})
+            if not isinstance(archive_id, str) or not isinstance(manifest, dict):
+                continue
+
+            archive_item = QTreeWidgetItem([label])
+            archive_item.setData(0, Qt.ItemDataRole.UserRole, {"archive_id": archive_id, "path": []})
+            root.addChild(archive_item)
+
+            runs = manifest.get("runs", {}).get("children", {})
+            if not isinstance(runs, dict):
+                continue
+
+            for run_name, run_data in runs.items():
+                if not isinstance(run_data, dict):
+                    continue
+
+                run_children = run_data.get("children")
+                if not isinstance(run_children, dict):
+                    continue
+
+                run_item = QTreeWidgetItem([run_name])
+                run_item.setData(0, Qt.ItemDataRole.UserRole, {"archive_id": archive_id, "path": []})
+                archive_item.addChild(run_item)
+
+                for group_name in run_children.keys():
+                    group_item = QTreeWidgetItem([group_name])
+                    group_item.setData(
+                        0,
+                        Qt.ItemDataRole.UserRole,
+                        {"archive_id": archive_id, "path": [run_name, group_name]},
+                    )
+                    run_item.addChild(group_item)
+
         self.expandAll()
     
     def get_selected_manifest_path(self) -> List[str]:
@@ -51,3 +110,26 @@ class FileTreeWidget(QTreeWidget):
 
         path = current.data(0, Qt.ItemDataRole.UserRole)
         return path if isinstance(path, list) else []
+
+    def get_selected_reference(self) -> Dict[str, Any]:
+        """Get selected archive/path reference from the tree item.
+
+        Returns a dictionary with keys:
+        - archive_id: str
+        - path: list[str]
+        """
+        current = self.currentItem()
+        if not current:
+            return {}
+
+        data = current.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(data, dict):
+            archive_id = data.get("archive_id")
+            path = data.get("path")
+            if isinstance(archive_id, str) and isinstance(path, list):
+                return {"archive_id": archive_id, "path": path}
+
+        if isinstance(data, list):
+            return {"archive_id": "default", "path": data}
+
+        return {}
