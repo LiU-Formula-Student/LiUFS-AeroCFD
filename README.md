@@ -158,7 +158,7 @@ pip install "aerocfd[full]"
 Or install from a release artifact:
 
 ```bash
-pip install "aerocfd-1.0b0.post6-py3-none-any.whl[full]"
+pip install "aerocfd-1.0b0.post7-py3-none-any.whl[full]"
 ```
 
 Then run:
