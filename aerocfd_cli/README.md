@@ -85,6 +85,7 @@ python -m aerocfd_cli <source_dir> [options]
 - `--fps` FPS for generated CFD videos (default: `12`)
 - `--extension` Video extension for CFD videos (default: `mp4`)
 - `--webp-quality` WebP quality for `3d_views` conversion, `0-100` (default: `80`)
+- `--workers` Worker threads for WebP conversion and per-plane video encoding (default: auto)
 - `--include-unknown` Copy files from unknown leaf folders into the package
 - `--log-level` Minimum event log level: `info`, `warning`, or `error` (default: `info`)
 - `--progress-only` Show only progress/ETA bar and suppress event log lines
