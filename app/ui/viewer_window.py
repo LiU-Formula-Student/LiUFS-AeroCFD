@@ -19,6 +19,7 @@ from simulation_compressor.packager import DuplicateRunError, append_run_to_liuf
 from ..version import APP_VERSION
 
 from .widgets.panes import GUIReporter, AppendRunWorker, DetachedImageWindow
+from .controllers import PaneOrchestrationController, SelectionOrchestrationController
 from .ui_builder import UIBuilder
 from ..core.view_state import ViewState
 from ..core.archive_manager import ArchiveManager
@@ -59,6 +60,9 @@ class ViewerWindow(QMainWindow):
         # Playback timer
         self.playback_timer = QTimer(self)
         self.playback_timer.timeout.connect(self.advance_playback)
+
+        self.pane_orchestration = PaneOrchestrationController(self)
+        self.selection_orchestration = SelectionOrchestrationController(self)
         
         UIBuilder(self).setup_ui()
         self.setup_shortcuts()
@@ -92,143 +96,28 @@ class ViewerWindow(QMainWindow):
     
     def set_view_mode(self, mode: str):
         """Switch between single/2-pane/4-pane/swap view modes."""
-        if mode in {"single", "2-pane", "4-pane"}:
-            self.current_view_mode = mode
-            self.split_pane_widget.set_layout(mode)
-            self.pane_run_refs = {i: None for i in range(self.split_pane_widget.get_pane_count())}
-            self.swap_pane_index = 0
-            self.setup_pane_signals()
-            self.update_all_panes()
-        elif mode == "swap":
-            if self.current_view_mode != "swap":
-                self.current_view_mode = "swap"
-        else:
-            self.info_label.appendPlainText(f"⚠ Unknown view mode: {mode}")
+        self.pane_orchestration.set_view_mode(mode)
     
     def setup_pane_signals(self):
         """Connect run_dropped signals from all panes to handler."""
-        for pane in self.split_pane_widget.panes.values():
-            pane.run_dropped.connect(self.on_tree_run_dropped)
+        self.pane_orchestration.setup_pane_signals()
     
     def on_tree_run_dropped(self, pane_id: int, archive_id: str, run_name: str):
         """Handle a run dropped into a specific pane."""
-        try:
-            if pane_id < 0 or pane_id >= self.split_pane_widget.get_pane_count():
-                self.info_label.appendPlainText(f"⚠ Pane {pane_id} is not available in current view")
-                return
-
-            # Verify archive and run exist using ArchiveManager
-            handler = self.archives.get_archive(archive_id)
-            if handler is None:
-                self.info_label.appendPlainText(f"⚠ Archive not loaded: {archive_id}")
-                return
-            
-            if run_name not in handler.get_runs():
-                self.info_label.appendPlainText(f"⚠ Run not found: {run_name}")
-                return
-            
-            archive_label = self.archives.get_archive_label(archive_id)
-
-            # Build pane-specific context with first available options
-            runs = handler.manifest.get("runs", {}).get("children", {})
-            run_node = runs.get(run_name, {}) if isinstance(runs, dict) else {}
-            children = run_node.get("children", {}) if isinstance(run_node, dict) else {}
-            versions = [name for name, node in (children.items() if isinstance(children, dict) else []) if isinstance(node, dict)]
-            
-            pane_context = {
-                "archive_id": archive_id,
-                "run_name": run_name,
-                "version": None,
-                "group_path": [],
-                "category": None,
-                "dataset": None,
-                "item": None,
-            }
-            
-            if versions:
-                version_name = sorted(versions)[0]
-                pane_context["version"] = version_name
-                group_path = [run_name, version_name]
-                pane_context["group_path"] = group_path
-                categories = handler.get_group_categories(group_path)
-                
-                if categories:
-                    category_name = sorted(categories.keys())[0]
-                    pane_context["category"] = category_name
-                    datasets = handler.get_category_datasets(group_path, category_name)
-                    
-                    if datasets:
-                        dataset_name = sorted(datasets.keys())[0]
-                        pane_context["dataset"] = dataset_name
-                        dataset_node = datasets.get(dataset_name, {})
-                        items = []
-                        if dataset_node.get("type") == "cfd_images":
-                            items = sorted((dataset_node.get("videos") or {}).keys())
-                        
-                        if items:
-                            pane_context["item"] = items[0]
-            
-            # Update the pane reference with its own context
-            self.pane_run_refs[pane_id] = {
-                "archive_id": archive_id,
-                "run_name": run_name,
-                "label": f"{archive_label} | {run_name}",
-                "context": pane_context
-            }
-            
-            # Trigger pane update with current frame (uses pane-specific context)
-            self.update_all_panes()
-            
-            # Update frame slider maximum based on loaded panes
-            self.update_slider_maximum()
-            
-            self.info_label.appendPlainText(f"✓ Loaded '{run_name}' in pane {pane_id}")
-        except Exception as e:
-            self.info_label.appendPlainText(f"❌ Error loading run in pane {pane_id}: {str(e)}")
+        self.pane_orchestration.on_tree_run_dropped(pane_id, archive_id, run_name)
     
     def clear_current_view(self):
         """Clear all panes in the current view."""
-        self.pane_run_refs = {i: None for i in range(self.split_pane_widget.get_pane_count())}
-        self.split_pane_widget.clear_all()
-        self.info_label.appendPlainText("✓ Cleared current view")
+        self.pane_orchestration.clear_current_view()
     
     def update_all_panes(self):
         """Update all panes with current frame from loaded runs."""
-        if not self.split_pane_widget:
-            return
-        
-        frame_index = self.frame_slider.value()
-        for pane_id in range(self.split_pane_widget.get_pane_count()):
-            pane = self.split_pane_widget.get_pane(pane_id)
-            if not pane:
-                continue
-            
-            run_ref = self.pane_run_refs.get(pane_id)
-            if not run_ref:
-                pane.clear()
-                continue
-            
-            pixmap = self.get_pixmap_for_pane(run_ref, frame_index)
-            title = run_ref.get("label", "Run")
-            pane.set_content(title, pixmap)
+        self.pane_orchestration.update_all_panes()
     
     def get_pixmap_for_pane(self, run_ref: Dict[str, Any], frame_index: int) -> Optional[QPixmap]:
         """Get pixmap for a pane from a run reference."""
-        # Use pane-specific context if available (from drag-and-drop)
-        pane_context = run_ref.get("context")
-        if pane_context:
-            return self.get_pane_pixmap_with_context(run_ref, frame_index, pane_context)
-        
-        # If this is the primary run, get from primary video player
-        if (run_ref.get("archive_id") == self.state.current_archive_id and 
-            run_ref.get("run_name") == self.state.current_run_name):
-            player = self.media.get_video_player(self.state.current_archive_id, self.state.current_run_name)
-            if player:
-                return player.get_frame(frame_index)
-            return None
-        
-        # Otherwise, get from compare video cache
-        return self.get_compare_run_pixmap(run_ref, frame_index)
+        controller = getattr(self, "pane_orchestration", None) or PaneOrchestrationController(self)
+        return controller.get_pixmap_for_pane(run_ref, frame_index)
     
     def open_file(self):
         """Open a .liufs file."""
@@ -490,245 +379,48 @@ class ViewerWindow(QMainWindow):
 
     def load_run_node(self, run_name: str):
         """Load available versions from selected run."""
-        archive_id = self.state.current_archive_id
-        if not archive_id:
-            return
-
-        try:
-            handler = self.archives.get_archive(archive_id)
-            if not handler:
-                return
-
-            runs = handler.manifest.get("runs", {}).get("children", {})
-            run_node = runs.get(run_name, {}) if isinstance(runs, dict) else {}
-            children = run_node.get("children", {}) if isinstance(run_node, dict) else {}
-            versions = [name for name, node in (children.items() if isinstance(children, dict) else []) if isinstance(node, dict)]
-
-            if not versions:
-                self.reset_option_controls()
-                self.info_label.clear()
-                self.info_label.appendPlainText("No versions found for this run")
-                self.frame_slider.setMaximum(0)
-                return
-
-            self.state.set_run(run_name)
-            self.state.set_available_versions(versions)
-
-            self.version_combo.blockSignals(True)
-            self.version_combo.clear()
-            for version_name in self.state.current_versions:
-                self.version_combo.addItem(version_name)
-            self.version_combo.blockSignals(False)
-            self.version_combo.setEnabled(True)
-
-            self.populate_categories_for_version()
-        except Exception as e:
-            self.info_label.clear()
-            self.info_label.appendPlainText(f"❌ Error: {str(e)}")
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.load_run_node(run_name)
 
     def populate_categories_for_version(self):
         """Populate category selector based on selected version."""
-        archive_id = self.state.current_archive_id
-        run_name = self.state.current_run_name
-        if not archive_id or not run_name:
-            return
-
-        handler = self.archives.get_archive(archive_id)
-        if not handler:
-            return
-
-        version_name = self.version_combo.currentText()
-        if not version_name:
-            return
-
-        group_path = [run_name, version_name]
-        self.state.set_version(version_name)
-        self.state.set_group_path(group_path)
-        
-        categories = handler.get_group_categories(group_path)
-        if not categories:
-            self.state.set_available_categories({})
-            self.category_combo.blockSignals(True)
-            self.category_combo.clear()
-            self.category_combo.blockSignals(False)
-            self.category_combo.setEnabled(False)
-            self.dataset_combo.clear()
-            self.dataset_combo.setEnabled(False)
-            self.item_combo.clear()
-            self.item_combo.setEnabled(False)
-            self.info_label.clear()
-            self.info_label.appendPlainText("No categories found for selected version")
-            return
-
-        self.state.set_available_categories(categories)
-
-        self.category_combo.blockSignals(True)
-        self.category_combo.clear()
-        for category_name in sorted(categories.keys()):
-            self.category_combo.addItem(category_name)
-        self.category_combo.blockSignals(False)
-        self.category_combo.setEnabled(True)
-
-        self.populate_datasets_for_category()
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.populate_categories_for_version()
 
     def populate_datasets_for_category(self):
         """Populate dataset selector based on selected category."""
-        archive_id = self.state.current_archive_id
-        if not archive_id:
-            return
-
-        handler = self.archives.get_archive(archive_id)
-        if not handler:
-            return
-
-        category_name = self.category_combo.currentText()
-        if not category_name:
-            return
-
-        datasets = handler.get_category_datasets(self.state.current_group_path, category_name)
-        self.state.set_available_datasets(datasets)
-
-        self.dataset_combo.blockSignals(True)
-        self.dataset_combo.clear()
-        for dataset_name in sorted(datasets.keys()):
-            self.dataset_combo.addItem(dataset_name)
-        self.dataset_combo.blockSignals(False)
-        self.dataset_combo.setEnabled(bool(datasets))
-
-        self.populate_items_for_dataset()
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.populate_datasets_for_category()
 
     def populate_items_for_dataset(self):
         """Populate item selector (planes/views) based on selected dataset."""
-        dataset_name = self.dataset_combo.currentText()
-        dataset_node = self.state.current_datasets.get(dataset_name, {})
-
-        items: list[str] = []
-        if dataset_node.get("type") == "cfd_images":
-            items = sorted((dataset_node.get("videos") or {}).keys())
-        elif dataset_node.get("type") == "3d_views":
-            files = dataset_node.get("files") or []
-            items = sorted(Path(path).name for path in files if isinstance(path, str))
-
-        self.item_combo.blockSignals(True)
-        self.item_combo.clear()
-        for item in items:
-            self.item_combo.addItem(item)
-        self.item_combo.blockSignals(False)
-        self.item_combo.setEnabled(bool(items))
-
-        if items:
-            self.info_label.clear()
-            self.info_label.appendPlainText("Select a plane to load media, or drag a run into any pane.")
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.populate_items_for_dataset()
 
     def on_version_changed(self, _index: int):
         """Handle version selector change."""
-        self.populate_categories_for_version()
-        self.update_pane_contexts_for_selector_change()
-        self.update_all_panes()
-        self.update_slider_maximum()
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.on_version_changed(_index)
 
     def on_category_changed(self, _index: int):
         """Handle category selector change."""
-        self.populate_datasets_for_category()
-        self.update_pane_contexts_for_selector_change()
-        self.update_all_panes()
-        self.update_slider_maximum()
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.on_category_changed(_index)
 
     def on_dataset_changed(self, _index: int):
         """Handle dataset selector change."""
-        self.populate_items_for_dataset()
-        self.update_pane_contexts_for_selector_change()
-        self.update_all_panes()
-        self.update_slider_maximum()
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.on_dataset_changed(_index)
 
     def on_item_changed(self, _index: int):
         """Handle item selector change."""
-        self.load_selected_media()
-        self.update_pane_contexts_for_selector_change()
-        self.update_all_panes()
-        self.update_slider_maximum()
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.on_item_changed(_index)
 
     def update_pane_contexts_for_selector_change(self):
         """Update pane contexts when selectors change, skipping invalid panes."""
-        version_name = self.version_combo.currentText() if self.version_combo else ""
-        category_name = self.category_combo.currentText() if self.category_combo else ""
-        dataset_name = self.dataset_combo.currentText() if self.dataset_combo else ""
-        item_name = self.item_combo.currentText() if self.item_combo else ""
-
-        if not version_name:
-            return
-
-        for pane_id, run_ref in self.pane_run_refs.items():
-            if not run_ref:
-                continue
-
-            archive_id = run_ref.get("archive_id")
-            run_name = run_ref.get("run_name")
-            if not archive_id or not run_name:
-                continue
-
-            handler = None
-            if hasattr(self, "archives") and self.archives:
-                handler = self.archives.get_archive(archive_id)
-            if handler is None:
-                open_archives = getattr(self, "open_archives", {})
-                handler = open_archives.get(archive_id)
-            if handler is None:
-                continue
-
-            runs = handler.manifest.get("runs", {}).get("children", {})
-            run_node = runs.get(run_name, {}) if isinstance(runs, dict) else {}
-            children = run_node.get("children", {}) if isinstance(run_node, dict) else {}
-            if version_name not in children:
-                continue
-
-            group_path = [run_name, version_name]
-            categories = handler.get_group_categories(group_path)
-            if category_name and category_name not in categories:
-                continue
-
-            selected_category = category_name or (sorted(categories.keys())[0] if categories else None)
-            if not selected_category:
-                continue
-
-            datasets = handler.get_category_datasets(group_path, selected_category)
-            if dataset_name and dataset_name not in datasets:
-                continue
-
-            selected_dataset = dataset_name or (sorted(datasets.keys())[0] if datasets else None)
-            if not selected_dataset:
-                continue
-
-            dataset_node = datasets.get(selected_dataset, {})
-            selected_item = item_name
-
-            if dataset_node.get("type") == "cfd_images":
-                videos = dataset_node.get("videos") or {}
-                if selected_item and selected_item not in videos:
-                    continue
-                if not selected_item:
-                    video_items = sorted(videos.keys())
-                    selected_item = video_items[0] if video_items else None
-            elif dataset_node.get("type") == "3d_views":
-                files = dataset_node.get("files") or []
-                file_items = sorted(Path(path).name for path in files if isinstance(path, str))
-                if selected_item and selected_item not in file_items:
-                    continue
-                if not selected_item:
-                    selected_item = file_items[0] if file_items else None
-
-            pane_context = run_ref.get("context") or {}
-            pane_context.update({
-                "archive_id": archive_id,
-                "run_name": run_name,
-                "version": version_name,
-                "group_path": group_path,
-                "category": selected_category,
-                "dataset": selected_dataset,
-                "item": selected_item,
-            })
-            run_ref["context"] = pane_context
-            self.pane_run_refs[pane_id] = run_ref
+        controller = getattr(self, "pane_orchestration", None) or PaneOrchestrationController(self)
+        controller.update_pane_contexts_for_selector_change()
 
     def get_compare_run_pixmap(self, ref: Dict[str, Any], frame_index: int) -> Optional[QPixmap]:
         """Get pixmap from MediaController."""
