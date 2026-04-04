@@ -294,24 +294,6 @@ Observed example:
 
 ---
 
-## ⚠️ Considerations
-
-- Compression is typically **lossy**
-- Keyframe interval affects navigation speed
-- Keep raw data until validated
-
----
-
-## 🔮 Future Work
-
-- Side-by-side comparison
-- Timeline navigation
-- Web-based viewer
-- Database indexing
-- Thumbnail previews
-
----
-
 ## 👥 Authors
 
 LiU Formula Student – Gustav Johansson
