@@ -21,6 +21,13 @@ changelog:
 
     ### Python package (`aerocfd`)
 
+    - Install from PyPI with extras:
+      ```bash
+      pip install "aerocfd[cli]"
+      pip install "aerocfd[app]"
+      pip install "aerocfd[full]"
+      ```
+
     - Install from release wheel (`*.whl`) with extras:
       ```bash
       pip install "<wheel-file-name>.whl[cli]"
