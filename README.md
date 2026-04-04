@@ -198,6 +198,45 @@ See [aerocfd_cli/README.md](aerocfd_cli/README.md) for full documentation.
 
 ---
 
+## ✅ Supported Platforms
+
+| Platform  | Python | Status      |
+|-----------|--------|------------|
+| Windows 10/11 | 3.12+  | ✅ Tested  |
+| macOS 12+     | 3.12+  | ✅ Tested  |
+| Linux (Ubuntu 22.04+) | 3.12+  | ✅ Tested  |
+
+**Minimum Requirements:**
+- Python 3.12+
+- FFmpeg 4.4+ (for encoding)
+- 4 GB RAM recommended
+- Modern GPU optional (video playback)
+
+---
+
+## 🧪 Post-Install Smoke Tests
+
+After installing, verify the installation with:
+
+```bash
+# CLI smoke test
+aerocfd --help
+
+# Desktop app smoke test (requires display/X11)
+python -m aerocfd_app
+```
+
+Expected output:
+- `aerocfd --help` → shows CLI options for packaging simulations
+- `python -m aerocfd_app` → launches GUI viewer window
+
+If you encounter import errors after install, reinstall with:
+```bash
+pip install --force-reinstall "aerocfd[full]"
+```
+
+---
+
 ## ⚙️ Development
 
 ### Requirements
