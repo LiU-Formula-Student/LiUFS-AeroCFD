@@ -746,6 +746,32 @@ class TestViewerWindowHelpers:
         assert ctx["item"] == "item2"
         print("✓ Selector updates propagate to swap run contexts")
 
+    def test_get_detached_target_pane_ids_for_layouts(self):
+        """Detached mode should keep pane 0 in main and detach the rest."""
+        viewer = self._make_viewer()
+        viewer.split_pane_widget.get_pane_count.return_value = 1
+        assert ViewerWindow.get_detached_target_pane_ids(viewer) == []
+
+        viewer.split_pane_widget.get_pane_count.return_value = 2
+        assert ViewerWindow.get_detached_target_pane_ids(viewer) == [1]
+
+        viewer.split_pane_widget.get_pane_count.return_value = 4
+        assert ViewerWindow.get_detached_target_pane_ids(viewer) == [1, 2, 3]
+        print("✓ Detached pane targets match layout requirements")
+
+    def test_launch_detached_window_warns_on_single_pane(self):
+        """Detached mode should require split layout (2/4-pane)."""
+        viewer = self._make_viewer()
+        viewer.detached_mode_enabled = False
+        viewer.detached_windows = {}
+        viewer.split_pane_widget.get_pane_count.return_value = 1
+
+        ViewerWindow.launch_detached_window(viewer)
+
+        viewer.info_label.appendPlainText.assert_called()
+        assert viewer.detached_mode_enabled is False
+        print("✓ Detached mode warns when not in split layout")
+
 
 class TestSwapModeDedup:
     """Regression tests for swap mode duplicate handling."""

@@ -178,6 +178,8 @@ class PaneOrchestrationController:
             title = run_ref.get("label", "Run")
             pane.set_content(title, pixmap)
 
+        self.window.sync_detached_windows()
+
     def get_pixmap_for_pane(self, run_ref: Dict[str, Any], frame_index: int):
         pane_context = run_ref.get("context")
         if pane_context:

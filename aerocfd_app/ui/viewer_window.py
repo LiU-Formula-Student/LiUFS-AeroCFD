@@ -53,6 +53,7 @@ class ViewerWindow(QMainWindow):
         
         # Detached windows
         self.detached_windows: Dict[str, DetachedImageWindow] = {}
+        self.detached_mode_enabled: bool = False
         
         # Pane tracking (maps pane_id to {archive_id, run_name, label, context})
         self.pane_run_refs: Dict[int, Optional[Dict[str, Any]]] = {}
@@ -167,6 +168,11 @@ class ViewerWindow(QMainWindow):
         self.detach_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
         self.detach_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.detach_shortcut.activated.connect(self.launch_detached_window)
+
+        # Disable detached mode and close all detached windows
+        self.disable_detach_shortcut = QShortcut(QKeySequence("Ctrl+Shift+L"), self)
+        self.disable_detach_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.disable_detach_shortcut.activated.connect(self.disable_detached_mode)
 
         # Global arrow key shortcuts (work even when file tree has focus)
         self.left_arrow_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
@@ -776,6 +782,7 @@ class ViewerWindow(QMainWindow):
         # Show which run is displayed (e.g., "Run 1/3")
         run_indicator = f"{title} ({self.swap_current_index + 1}/{len(self.swap_runs)})"
         pane.set_content(run_indicator, pixmap)
+        self.sync_detached_windows()
 
     def get_current_pixmap(self) -> Optional[QPixmap]:
         """Return currently displayed pixmap from the primary pane (pane 0)."""
@@ -785,29 +792,90 @@ class ViewerWindow(QMainWindow):
             return pixmap if pixmap else None
         return None
 
-    def launch_detached_window(self):
-        """Open or refresh a detached window with the currently visible pane content."""
-        pane = self.split_pane_widget.get_pane(0)
-        pixmap = self.get_current_pixmap()
+    def get_detached_target_pane_ids(self) -> list[int]:
+        """Return pane ids that should be detached for current layout (all except pane 0)."""
+        if not self.split_pane_widget:
+            return []
+        pane_count = self.split_pane_widget.get_pane_count()
+        if pane_count <= 1:
+            return []
+        return list(range(1, pane_count))
 
-        if not pane or pixmap is None:
-            self.info_label.appendPlainText("⚠ Warning: No frame available to launch in detached window")
+    def _sync_detached_window_for_pane(self, pane_id: int, create_if_missing: bool = False):
+        """Create/update a detached window for a specific pane id."""
+        pane = self.split_pane_widget.get_pane(pane_id)
+        if pane is None:
             return
 
-        title = "Detached View"
+        window_key = f"pane_{pane_id}"
+        detached = self.detached_windows.get(window_key)
+        if detached is None and create_if_missing:
+            detached = DetachedImageWindow(f"Pane {pane_id}")
+            self.detached_windows[window_key] = detached
+        if detached is None:
+            return
+
+        title = f"Pane {pane_id}"
         if isinstance(pane.run_info, dict) and pane.run_info.get("title"):
             title = str(pane.run_info.get("title"))
 
-        window_key = "pane_0"
-        detached = self.detached_windows.get(window_key)
-        if detached is None:
-            detached = DetachedImageWindow(title)
-            self.detached_windows[window_key] = detached
-
+        pixmap = pane.original_pixmap if hasattr(pane, "original_pixmap") else None
         detached.update_content(title, pixmap)
-        detached.show()
-        detached.raise_()
-        detached.activateWindow()
+
+        if create_if_missing:
+            detached.show()
+            detached.raise_()
+            detached.activateWindow()
+
+    def sync_detached_windows(self):
+        """Keep detached windows synchronized with currently displayed pane frames."""
+        if not self.detached_mode_enabled:
+            return
+
+        target_ids = set(self.get_detached_target_pane_ids())
+
+        # Close detached windows that no longer match the layout
+        for key, window in list(self.detached_windows.items()):
+            try:
+                pane_id = int(key.split("_")[1])
+            except (IndexError, ValueError):
+                pane_id = -1
+            if pane_id not in target_ids:
+                window.close()
+                del self.detached_windows[key]
+
+        # Refresh existing detached windows
+        for pane_id in sorted(target_ids):
+            self._sync_detached_window_for_pane(pane_id, create_if_missing=False)
+
+    def launch_detached_window(self):
+        """Enable detached mode and pop out secondary panes (keep pane 0 in main window)."""
+        target_ids = self.get_detached_target_pane_ids()
+        if not target_ids:
+            self.info_label.appendPlainText(
+                "⚠ Warning: Detached mode requires 2-pane or 4-pane layout (pane 0 stays in main view)."
+            )
+            return
+
+        self.detached_mode_enabled = True
+        for pane_id in target_ids:
+            self._sync_detached_window_for_pane(pane_id, create_if_missing=True)
+
+        self.info_label.appendPlainText(
+            f"✓ Detached mode enabled: main keeps pane 0, detached panes: {', '.join(str(i) for i in target_ids)}"
+        )
+
+    def disable_detached_mode(self):
+        """Disable detached mode and close all detached windows."""
+        if not self.detached_mode_enabled and not self.detached_windows:
+            self.info_label.appendPlainText("ℹ Detached mode is already disabled")
+            return
+
+        self.detached_mode_enabled = False
+        for window in self.detached_windows.values():
+            window.close()
+        self.detached_windows.clear()
+        self.info_label.appendPlainText("✓ Detached mode disabled")
 
     def export_current_frame(self):
         """Export current frame as image file."""

@@ -208,6 +208,12 @@ class UIBuilder:
         clear_view_action = view_menu.addAction("&Clear Current View")
         clear_view_action.triggered.connect(self.window.clear_current_view)
 
+        view_menu.addSeparator()
+
+        disable_detached_action = view_menu.addAction("Disable &Detached Mode")
+        disable_detached_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        disable_detached_action.triggered.connect(self.window.disable_detached_mode)
+
         # Help menu
         help_menu = menubar.addMenu("&Help")
         

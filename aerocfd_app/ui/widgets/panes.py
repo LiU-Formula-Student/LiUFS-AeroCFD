@@ -101,6 +101,7 @@ class DetachedImageWindow(QMainWindow):
 
         self.title_label = QLabel(title)
         self.title_label.setStyleSheet("font-size: 13px; font-weight: 600;")
+        self.title_label.setFixedHeight(20)
         layout.addWidget(self.title_label)
 
         self.image_label = QLabel()
