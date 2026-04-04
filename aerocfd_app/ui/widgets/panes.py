@@ -165,9 +165,21 @@ class ImagePane(QWidget):
         self.setAcceptDrops(True)
 
     def set_content(self, title: str, pixmap: Optional[QPixmap]):
-        """Update pane content."""
+        """Update pane content.
+        
+        Args:
+            title: Run identifier (e.g. "archive.liufs | RunName")
+            pixmap: Image to display, or None to show placeholder
+        """
         self.run_info = {"title": title}
-        self.title_label.setText(title)
+        # Show title with visual indicator
+        if pixmap is not None:
+            self.title_label.setText(f"✓ {title}")
+            self.title_label.setStyleSheet("color: #4ec9b0; font-size: 11px; font-weight: 600;")
+        else:
+            self.title_label.setText(title)
+            self.title_label.setStyleSheet("color: #cccccc; font-size: 11px; font-weight: 600;")
+        
         if pixmap is None:
             self.label.setText("(no image)")
             self.label.setPixmap(QPixmap())
@@ -191,10 +203,11 @@ class ImagePane(QWidget):
         self.label.setPixmap(scaled)
 
     def clear(self):
-        """Clear pane content."""
+        """Clear pane content and show placeholder."""
         self.run_info = None
         self.original_pixmap = None
         self.title_label.setText(f"Pane {self.pane_id}")
+        self.title_label.setStyleSheet("color: #888888; font-size: 11px; font-weight: 600;")
         self.label.setPixmap(QPixmap())
         self.label.setText("(Drag run here)")
         self.label.setStyleSheet("background-color: #1e1e1e; color: #888888; font-size: 11px;")

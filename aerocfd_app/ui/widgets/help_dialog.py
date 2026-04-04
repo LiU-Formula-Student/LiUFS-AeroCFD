@@ -63,7 +63,7 @@ class HelpDialog(QDialog):
 <tr><td><b>Ctrl+1</b></td><td>Single pane view</td></tr>
 <tr><td><b>Ctrl+2</b></td><td>2-pane split view</td></tr>
 <tr><td><b>Ctrl+4</b></td><td>4-pane split view</td></tr>
-<tr><td><b>Ctrl+S</b></td><td>Swap pane mode (drag-and-drop)</td></tr>
+<tr><td><b>Ctrl+S</b></td><td>Swap/Compare mode (synced frame playback, drag-to-load)</td></tr>
 </table>
 
 <b>Export & Display</b>
@@ -118,10 +118,19 @@ class HelpDialog(QDialog):
 <li>Adjust playback speed with FPS slider</li>
 </ul>
 
-<b>5. View Layout</b>
+<b>5. View Layout & Comparison</b>
 <ul>
-<li>Switch between single/2-pane/4-pane views</li>
-<li>In Swap mode, drag runs from the tree to panes</li>
+<li><b>Single View</b> (Ctrl+1): Show one run full-screen</li>
+<li><b>Split View</b> (Ctrl+2 or Ctrl+4): Show 2 or 4 panes</li>
+<li><b>Swap/Compare Mode</b> (Ctrl+S): Drag-and-drop side-by-side comparison
+  <ul>
+  <li>Drag any run from the tree to left or right pane</li>
+  <li>Pane headers show run names and a ✓ indicator when loaded</li>
+  <li>All frames stay <b>synchronized</b> as you scrub the slider</li>
+  <li>Image panes stay in same position for pixel-perfect overlay comparison</li>
+  <li>Ideal for comparing different simulations at the same time step</li>
+  </ul>
+</li>
 </ul>
 
 <h3>Tips</h3>
@@ -129,6 +138,7 @@ class HelpDialog(QDialog):
 <li>Right-click panes for options (fullscreen, detach window)</li>
 <li>Keyboard shortcuts work in all view modes</li>
 <li>Playback speed is frame-rate dependent</li>
+<li>In Swap mode, all panes play at the <b>minimum frame count</b> of loaded runs (prevents out-of-bounds errors)</li>
 </ul>
         """
 

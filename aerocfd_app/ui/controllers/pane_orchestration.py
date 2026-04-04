@@ -23,6 +23,15 @@ class PaneOrchestrationController:
         elif mode == "swap":
             if self.window.current_view_mode != "swap":
                 self.window.current_view_mode = "swap"
+                self.window.split_pane_widget.set_layout("2-pane")
+                self.window.pane_run_refs = {i: None for i in range(self.window.split_pane_widget.get_pane_count())}
+                self.window.swap_pane_index = 0
+                self.setup_pane_signals()
+                self.update_all_panes()
+                self.window.info_label.appendPlainText("✓ Swap view enabled. Drag runs into panes to compare.")
+            else:
+                self.window.split_pane_widget.set_layout("2-pane")
+                self.window.info_label.appendPlainText("✓ Swap view active.")
         else:
             self.window.info_label.appendPlainText(f"⚠ Unknown view mode: {mode}")
 
