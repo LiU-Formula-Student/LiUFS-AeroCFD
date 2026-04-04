@@ -253,6 +253,60 @@ def test_cli_can_append_to_existing_archive(tmp_path: Path, monkeypatch: pytest.
 
     assert exit_code == 0
     assert calls[0]["archive_file"] == archive_path
+    assert calls[0]["workers"] is None
+
+
+def test_cli_workers_are_forwarded_for_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    archive_path = tmp_path / "out.liufs"
+
+    calls: list[dict] = []
+
+    def fake_build_liufs(**kwargs):
+        calls.append(kwargs)
+        return archive_path
+
+    monkeypatch.setattr(cli, "build_liufs", fake_build_liufs)
+
+    exit_code = cli.main([str(source_dir), "--workers", "4"])
+
+    assert exit_code == 0
+    assert calls
+    assert calls[0]["workers"] == 4
+
+
+def test_cli_workers_are_forwarded_for_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    archive_path = tmp_path / "existing.liufs"
+    archive_path.write_bytes(b"placeholder")
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    calls: list[dict] = []
+
+    def fake_append_run_to_liufs(**kwargs):
+        calls.append(kwargs)
+        return archive_path
+
+    monkeypatch.setattr(cli, "append_run_to_liufs", fake_append_run_to_liufs)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: archive_path)
+
+    exit_code = cli.main([str(source_dir), "--append-to", str(archive_path), "--workers", "3"])
+
+    assert exit_code == 0
+    assert calls
+    assert calls[0]["workers"] == 3
+
+
+def test_cli_workers_must_be_positive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    exit_code = cli.main([str(source_dir), "--workers", "0"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "--workers must be greater than 0" in captured.err
 
 
 def test_cli_log_level_is_passed_to_reporter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
