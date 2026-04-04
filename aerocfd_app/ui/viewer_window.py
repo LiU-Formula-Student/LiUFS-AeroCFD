@@ -150,8 +150,18 @@ class ViewerWindow(QMainWindow):
     
     def setup_shortcuts(self):
         """Setup keyboard shortcuts."""
+        # Frame navigation
         QShortcut(Qt.Key.Key_Right, self, self.next_frame)
         QShortcut(Qt.Key.Key_Left, self, self.previous_frame)
+        
+        # View modes
+        QShortcut(QKeySequence("Ctrl+1"), self, lambda: self.set_view_mode("single"))
+        QShortcut(QKeySequence("Ctrl+2"), self, lambda: self.set_view_mode("2-pane"))
+        QShortcut(QKeySequence("Ctrl+4"), self, lambda: self.set_view_mode("4-pane"))
+        QShortcut(QKeySequence("Ctrl+S"), self, lambda: self.set_view_mode("swap"))
+        
+        # Export
+        QShortcut(QKeySequence("Ctrl+E"), self, self.export_current_frame)
     
     def set_view_mode(self, mode: str):
         """Switch between single/2-pane/4-pane/swap view modes."""
