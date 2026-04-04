@@ -30,7 +30,7 @@ pip install "aerocfd[full]"
 Install from a wheel file (available in GitHub releases):
 
 ```bash
-pip install "aerocfd-1.0b0.post5-py3-none-any.whl[cli]"
+pip install "aerocfd-1.0b0.post7-py3-none-any.whl[cli]"
 ```
 
 ### As a package dependency
