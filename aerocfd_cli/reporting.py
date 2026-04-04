@@ -65,9 +65,18 @@ class NullReporter(BaseReporter):
 
 
 class RichReporter(BaseReporter):
-    def __init__(self, console: Console | None = None, loglevel: LogLevel = LogLevel.INFO) -> None:
+    def __init__(
+        self,
+        console: Console | None = None,
+        loglevel: LogLevel = LogLevel.INFO,
+        *,
+        show_logs: bool = True,
+        show_progress: bool = True,
+    ) -> None:
         self.console = console or Console()
         self.loglevel = loglevel
+        self.show_logs = show_logs
+        self.show_progress = show_progress
         self._progress: Progress | None = None
         self._task_id: int | None = None
         self._task_total = 0
@@ -95,17 +104,17 @@ class RichReporter(BaseReporter):
             self._task_total = 0
 
     def emit(self, event: ProgressEvent) -> None:
-        if event.kind == "log" and self.loglevel.value <= LogLevel.INFO.value:
+        if event.kind == "log" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
             self.console.log(event.message)
-        elif event.kind == "warn" and self.loglevel.value <= LogLevel.WARNING.value:
+        elif event.kind == "warn" and self.show_logs and self.loglevel.value <= LogLevel.WARNING.value:
             self.console.log(f"[bold yellow]{event.message}[/]")
-        elif event.kind == "error" and self.loglevel.value <= LogLevel.ERROR.value:
+        elif event.kind == "error" and self.show_logs and self.loglevel.value <= LogLevel.ERROR.value:
             self.console.log(f"[bold red]{event.message}[/]")
-        elif event.kind == "start_step":
+        elif event.kind == "start_step" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
             self.console.log(f"[bold dark_orange]{event.message}[/]")
-        elif event.kind == "finish_step":
+        elif event.kind == "finish_step" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
             self.console.log(f"[bold green]{event.message}[/]")
-        elif event.kind == "advance":
+        elif event.kind == "advance" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
             self.console.log(event.message)
         elif event.kind == "progress_total":
             data = event.data or {}
@@ -114,7 +123,7 @@ class RichReporter(BaseReporter):
             self._completed_attempts = 0
             self._task_total = total
 
-            if total > 0:
+            if total > 0 and self.show_progress:
                 progress = self._ensure_progress()
                 if self._task_id is None:
                     self._task_id = progress.add_task(description, total=total, completed=0)
@@ -125,7 +134,7 @@ class RichReporter(BaseReporter):
                     self._progress.stop()
                     self._progress = None
                 self._task_id = None
-            if total == 0 and self.loglevel.value <= LogLevel.INFO.value:
+            if total == 0 and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
                 self.console.log("No image files found to process.")
         elif event.kind == "progress_advance":
             if self._progress is None or self._task_id is None:
@@ -135,13 +144,13 @@ class RichReporter(BaseReporter):
             self._completed_attempts += amount
             next_completed = min(self._completed_attempts, max(self._task_total, 1))
             self._progress.update(self._task_id, completed=next_completed)
-            if event.message and self.loglevel.value <= LogLevel.INFO.value:
+            if event.message and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
                 self.console.log(event.message)
         elif event.kind == "progress_complete":
             if self._progress is not None and self._task_id is not None:
                 self._progress.update(self._task_id, completed=max(self._task_total, 1))
                 self._progress.refresh()
-            if event.message and self.loglevel.value <= LogLevel.INFO.value:
+            if event.message and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
                 self.console.log(f"[bold green]{event.message}[/]")
-        else:
+        elif self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
             self.console.log(event.message)
