@@ -198,7 +198,7 @@ pip show aerocfd
 
 If not installed, install from wheel or git:
 ```bash
-pip install /path/to/aerocfd-1.0b0.post5-py3-none-any.whl
+pip install /path/to/aerocfd-1.0b0.post6-py3-none-any.whl
 ```
 
 ### Import Errors After Installation
