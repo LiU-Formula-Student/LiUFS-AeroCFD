@@ -135,6 +135,7 @@ def _process_leaf(
     fps: int,
     extension: str,
     webp_quality: int,
+    workers: int | None,
     include_unknown: bool,
     reporter: BaseReporter,
 ) -> None:
@@ -154,6 +155,7 @@ def _process_leaf(
             output_dir=str(package_root),
             fps=fps,
             extension=extension,
+            workers=workers,
             reporter=reporter,
         )
 
@@ -173,6 +175,7 @@ def _process_leaf(
             image_paths,
             output_dir=str(package_root),
             quality=webp_quality,
+            workers=workers,
             reporter=reporter,
         )
         manifest_node["files"] = [
@@ -202,6 +205,7 @@ def _build_manifest_tree(
     fps: int,
     extension: str,
     webp_quality: int,
+    workers: int | None,
     include_unknown: bool,
     reporter: BaseReporter,
 ) -> None:
@@ -213,6 +217,7 @@ def _build_manifest_tree(
             fps=fps,
             extension=extension,
             webp_quality=webp_quality,
+            workers=workers,
             include_unknown=include_unknown,
             reporter=reporter,
         )
@@ -230,6 +235,7 @@ def _build_manifest_tree(
             fps=fps,
             extension=extension,
             webp_quality=webp_quality,
+            workers=workers,
             include_unknown=include_unknown,
             reporter=reporter
         )
@@ -257,6 +263,7 @@ def build_liufs(
     fps: int = 12,
     extension: str = "mp4",
     webp_quality: int = 80,
+    workers: int | None = None,
     include_unknown: bool = False,
     reporter: BaseReporter | None = None,
 ) -> Path:
@@ -290,6 +297,7 @@ def build_liufs(
                 "fps": fps,
                 "video_extension": extension,
                 "webp_quality": webp_quality,
+                "workers": workers,
                 "include_unknown": include_unknown,
             },
             "runs": {},
@@ -305,6 +313,7 @@ def build_liufs(
             fps=fps,
             extension=extension,
             webp_quality=webp_quality,
+            workers=workers,
             include_unknown=include_unknown,
             reporter=reporter
         )
@@ -329,6 +338,7 @@ def append_run_to_liufs(
     fps: int = 12,
     extension: str = "mp4",
     webp_quality: int = 80,
+    workers: int | None = None,
     include_unknown: bool = False,
     reporter: BaseReporter | None = None,
 ) -> Path:
@@ -389,6 +399,7 @@ def append_run_to_liufs(
             fps=fps,
             extension=extension,
             webp_quality=webp_quality,
+            workers=workers,
             include_unknown=include_unknown,
             reporter=reporter,
         )

@@ -49,6 +49,12 @@ def create_parser() -> argparse.ArgumentParser:
         help="WebP quality for 3d view image compression (0-100). Default: 80.",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of worker threads for WebP and per-plane video processing. Default: auto.",
+    )
+    parser.add_argument(
         "--include-unknown",
         action="store_true",
         help="Copy files from directories with unknown type into the archive.",
@@ -102,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.webp_quality < 0 or args.webp_quality > 100:
         return fail_validation("--webp-quality must be between 0 and 100")
 
+    if args.workers is not None and args.workers <= 0:
+        return fail_validation("--workers must be greater than 0")
+
     reporter = None
     if args.log_level == "warning":
         loglevel = LogLevel.WARNING
@@ -130,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 extension=args.extension,
                 webp_quality=args.webp_quality,
+                workers=args.workers,
                 include_unknown=args.include_unknown,
                 reporter=reporter,
             )
@@ -140,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 extension=args.extension,
                 webp_quality=args.webp_quality,
+                workers=args.workers,
                 include_unknown=args.include_unknown,
                 reporter=reporter,
             )
