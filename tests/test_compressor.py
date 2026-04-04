@@ -19,7 +19,7 @@ from aerocfd_cli.encoder import (
     is_image_file,
 )
 from aerocfd_cli.packager import DuplicateRunError, append_run_to_liufs, build_liufs
-from aerocfd_cli.reporting import BaseReporter, ProgressEvent
+from aerocfd_cli.reporting import BaseReporter, LogLevel, ProgressEvent
 from aerocfd_cli.scanner import build_structure
 
 
@@ -253,4 +253,83 @@ def test_cli_can_append_to_existing_archive(tmp_path: Path, monkeypatch: pytest.
 
     assert exit_code == 0
     assert calls[0]["archive_file"] == archive_path
+
+
+def test_cli_log_level_is_passed_to_reporter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    created_archive = tmp_path / "result.liufs"
+    reporter_kwargs: dict = {}
+
+    class FakeReporter:
+        def __init__(self, console, **kwargs):
+            reporter_kwargs.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RichReporter", FakeReporter)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: created_archive)
+
+    exit_code = cli.main([str(source_dir), "--log-level", "warning"])
+
+    assert exit_code == 0
+    assert reporter_kwargs["loglevel"] == LogLevel.WARNING
+    assert reporter_kwargs["show_logs"] is True
+    assert reporter_kwargs["show_progress"] is True
+
+
+def test_cli_progress_only_disables_logs_but_keeps_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    created_archive = tmp_path / "result.liufs"
+    reporter_kwargs: dict = {}
+
+    class FakeReporter:
+        def __init__(self, console, **kwargs):
+            reporter_kwargs.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RichReporter", FakeReporter)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: created_archive)
+
+    exit_code = cli.main([str(source_dir), "--progress-only"])
+
+    assert exit_code == 0
+    assert reporter_kwargs["show_logs"] is False
+    assert reporter_kwargs["show_progress"] is True
+
+
+def test_cli_quiet_suppresses_validation_output(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["/tmp/does-not-exist", "--quiet"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_cli_quiet_disables_all_reporter_output_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    created_archive = tmp_path / "result.liufs"
+    reporter_kwargs: dict = {}
+
+    class FakeReporter:
+        def __init__(self, console, **kwargs):
+            reporter_kwargs.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RichReporter", FakeReporter)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: created_archive)
+
+    exit_code = cli.main([str(source_dir), "--quiet"])
+
+    assert exit_code == 0
+    assert reporter_kwargs["show_logs"] is False
+    assert reporter_kwargs["show_progress"] is False
 
