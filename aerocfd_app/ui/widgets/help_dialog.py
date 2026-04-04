@@ -75,7 +75,7 @@ class HelpDialog(QDialog):
 
         label = QLabel(shortcuts_text)
         label.setFont(QFont("Courier", 10))
-        label.setTextFormat(label.textFormat() | 0x04)  # Support HTML
+        label.setTextFormat(Qt.TextFormat.RichText)
         label.setWordWrap(True)
 
         scroll = QScrollArea()
@@ -133,7 +133,7 @@ class HelpDialog(QDialog):
         """
 
         label = QLabel(usage_text)
-        label.setTextFormat(label.textFormat() | 0x04)  # Support HTML
+        label.setTextFormat(Qt.TextFormat.RichText)
         label.setWordWrap(True)
 
         scroll = QScrollArea()
@@ -182,7 +182,7 @@ class HelpDialog(QDialog):
         """
 
         label = QLabel(support_text)
-        label.setTextFormat(label.textFormat() | 0x04)  # Support HTML
+        label.setTextFormat(Qt.TextFormat.RichText)
         label.setWordWrap(True)
 
         scroll = QScrollArea()
