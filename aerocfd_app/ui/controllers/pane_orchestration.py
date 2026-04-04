@@ -23,15 +23,15 @@ class PaneOrchestrationController:
         elif mode == "swap":
             if self.window.current_view_mode != "swap":
                 self.window.current_view_mode = "swap"
-                self.window.split_pane_widget.set_layout("2-pane")
-                self.window.pane_run_refs = {i: None for i in range(self.window.split_pane_widget.get_pane_count())}
-                self.window.swap_pane_index = 0
+                self.window.split_pane_widget.set_layout("single")
+                self.window.pane_run_refs = {0: None}
+                self.window.swap_runs = []
+                self.window.swap_current_index = 0
                 self.setup_pane_signals()
-                self.update_all_panes()
-                self.window.info_label.appendPlainText("✓ Swap view enabled. Drag runs into panes to compare.")
+                self.window.split_pane_widget.clear_all()
+                self.window.info_label.appendPlainText("✓ Swap mode enabled. Drag runs to load (use ↑↓ arrows to cycle).")
             else:
-                self.window.split_pane_widget.set_layout("2-pane")
-                self.window.info_label.appendPlainText("✓ Swap view active.")
+                self.window.info_label.appendPlainText("✓ Swap mode active (use ↑↓ to cycle runs).")
         else:
             self.window.info_label.appendPlainText(f"⚠ Unknown view mode: {mode}")
 
@@ -98,14 +98,21 @@ class PaneOrchestrationController:
                         if items:
                             pane_context["item"] = items[0]
 
-            self.window.pane_run_refs[pane_id] = {
+            run_ref = {
                 "archive_id": archive_id,
                 "run_name": run_name,
                 "label": f"{archive_label} | {run_name}",
                 "context": pane_context,
             }
 
-            self.update_all_panes()
+            # In swap mode, add to swap_runs; otherwise to pane refs
+            if self.window.current_view_mode == "swap":
+                self.window.swap_runs.append(run_ref)
+                self.window.swap_current_index = 0
+                self.window.update_swap_display()
+            else:
+                self.window.pane_run_refs[pane_id] = run_ref
+                self.update_all_panes()
             self.update_slider_maximum()
             self.window.info_label.appendPlainText(f"✓ Loaded '{run_name}' in pane {pane_id}")
         except Exception as e:

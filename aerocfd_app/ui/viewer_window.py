@@ -59,6 +59,10 @@ class ViewerWindow(QMainWindow):
         self.current_view_mode: str = "single"
         self.swap_pane_index: int = 0
         
+        # Swap mode: list of runs to cycle through, and current index
+        self.swap_runs: list = []  # List of {archive_id, run_name, label, context}
+        self.swap_current_index: int = 0
+        
         # Playback timer
         self.playback_timer = QTimer(self)
         self.playback_timer.timeout.connect(self.advance_playback)
@@ -150,10 +154,6 @@ class ViewerWindow(QMainWindow):
     
     def setup_shortcuts(self):
         """Setup keyboard shortcuts."""
-        # Frame navigation
-        QShortcut(Qt.Key.Key_Right, self, self.next_frame)
-        QShortcut(Qt.Key.Key_Left, self, self.previous_frame)
-        
         # View modes
         QShortcut(QKeySequence("Ctrl+1"), self, lambda: self.set_view_mode("single"))
         QShortcut(QKeySequence("Ctrl+2"), self, lambda: self.set_view_mode("2-pane"))
@@ -162,6 +162,36 @@ class ViewerWindow(QMainWindow):
         
         # Export
         QShortcut(QKeySequence("Ctrl+E"), self, self.export_current_frame)
+        
+        # Frame navigation shortcuts (will be overridden in keyPressEvent for swap mode)
+        # Left/Right for frame navigation in normal modes, Up/Down for run swapping in swap mode
+    
+    def keyPressEvent(self, event):
+        """Handle key press events with context-aware behavior."""
+        from PySide6.QtCore import Qt
+        
+        if event.key() == Qt.Key.Key_Left:
+            if self.current_view_mode == "swap":
+                event.ignore()  # Let other handlers process
+            else:
+                self.previous_frame()
+                return
+        elif event.key() == Qt.Key.Key_Right:
+            if self.current_view_mode == "swap":
+                event.ignore()  # Let other handlers process
+            else:
+                self.next_frame()
+                return
+        elif event.key() == Qt.Key.Key_Up:
+            if self.current_view_mode == "swap":
+                self.swap_previous_run()
+                return
+        elif event.key() == Qt.Key.Key_Down:
+            if self.current_view_mode == "swap":
+                self.swap_next_run()
+                return
+        
+        super().keyPressEvent(event)
     
     def set_view_mode(self, mode: str):
         """Switch between single/2-pane/4-pane/swap view modes."""
@@ -688,6 +718,42 @@ class ViewerWindow(QMainWindow):
         current = self.frame_slider.value()
         prev_frame = max(current - 1, 0)
         self.display_frame(prev_frame)
+
+    def swap_next_run(self):
+        """Cycle to next run in swap mode (down arrow)."""
+        if self.current_view_mode != "swap" or not self.swap_runs:
+            return
+        
+        self.swap_current_index = (self.swap_current_index + 1) % len(self.swap_runs)
+        self.update_swap_display()
+
+    def swap_previous_run(self):
+        """Cycle to previous run in swap mode (up arrow)."""
+        if self.current_view_mode != "swap" or not self.swap_runs:
+            return
+        
+        self.swap_current_index = (self.swap_current_index - 1) % len(self.swap_runs)
+        self.update_swap_display()
+
+    def update_swap_display(self):
+        """Update the display with current swap run."""
+        if self.current_view_mode != "swap" or not self.swap_runs:
+            return
+        
+        run_ref = self.swap_runs[self.swap_current_index]
+        frame_index = self.frame_slider.value()
+        
+        pane = self.split_pane_widget.get_pane(0)
+        if not pane:
+            return
+        
+        # Get pixmap and update display
+        pixmap = self.pane_orchestration.get_pixmap_for_pane(run_ref, frame_index)
+        title = run_ref.get("label", "Run")
+        
+        # Show which run is displayed (e.g., "Run 1/3")
+        run_indicator = f"{title} ({self.swap_current_index + 1}/{len(self.swap_runs)})"
+        pane.set_content(run_indicator, pixmap)
 
     def get_current_pixmap(self) -> Optional[QPixmap]:
         """Return currently displayed pixmap from the primary pane (pane 0)."""
