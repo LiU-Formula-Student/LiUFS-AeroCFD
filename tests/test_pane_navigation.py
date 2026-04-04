@@ -48,6 +48,7 @@ except Exception as exc:  # pragma: no cover - platform dependent
 
 from aerocfd_app.ui.viewer_window import ViewerWindow
 from aerocfd_app.ui.widgets.panes import DetachedImageWindow, ImagePane
+from aerocfd_app.ui.controllers.pane_orchestration import PaneOrchestrationController
 
 
 def _get_qapp():
@@ -602,6 +603,44 @@ class TestViewerWindowHelpers:
         viewer.frame_slider.setEnabled.assert_called_with(True)
         print("✓ Slider maximum uses minimum pane frame count")
 
+    def test_update_slider_maximum_uses_swap_runs_in_swap_mode(self):
+        """Test slider maximum is based on swap runs when swap mode is active."""
+        viewer = self._make_viewer()
+        viewer.current_view_mode = "swap"
+        viewer.pane_run_refs = {0: None}
+        viewer.swap_runs = [
+            {
+                "archive_id": "arch1",
+                "run_name": "runA",
+                "context": {
+                    "version": "v1",
+                    "group_path": ["runA", "v1"],
+                    "category": "cat1",
+                    "dataset": "data1",
+                    "item": "item1",
+                },
+            },
+            {
+                "archive_id": "arch1",
+                "run_name": "runB",
+                "context": {
+                    "version": "v1",
+                    "group_path": ["runB", "v1"],
+                    "category": "cat1",
+                    "dataset": "data1",
+                    "item": "item1",
+                },
+            },
+        ]
+        viewer.get_video_frame_count_for_pane.side_effect = [25, 40]
+
+        ViewerWindow.update_slider_maximum(viewer)
+
+        viewer.frame_slider.setMaximum.assert_called_with(24)
+        viewer.frame_slider.setValue.assert_called_with(0)
+        viewer.frame_slider.setEnabled.assert_called_with(True)
+        print("✓ Slider maximum uses minimum swap run frame count in swap mode")
+
     def test_update_pane_contexts_updates_all_matching_panes(self):
         """Test selector changes update every pane context that matches."""
         viewer = self._make_viewer()
@@ -656,6 +695,104 @@ class TestViewerWindowHelpers:
         assert viewer.pane_run_refs[0]["context"]["version"] == "v2"
         assert viewer.pane_run_refs[1]["context"] == original
         print("✓ Invalid panes are skipped during selector updates")
+
+    def test_update_slider_maximum_preserves_current_frame_index(self):
+        """Test slider keeps current frame when still in range after selector change."""
+        viewer = self._make_viewer()
+        viewer.current_view_mode = "single"
+        viewer.frame_slider.value.return_value = 12
+        viewer.get_video_frame_count_for_pane.side_effect = [40, 55]
+
+        ViewerWindow.update_slider_maximum(viewer)
+
+        viewer.frame_slider.setMaximum.assert_called_with(39)
+        viewer.frame_slider.setValue.assert_called_with(12)
+        print("✓ Slider preserves current frame index")
+
+    def test_update_pane_contexts_updates_swap_runs_in_swap_mode(self):
+        """Test selector changes update swap run contexts while in swap mode."""
+        viewer = self._make_viewer()
+        viewer.current_view_mode = "swap"
+        viewer.swap_runs = [
+            {
+                "archive_id": "arch1",
+                "run_name": "runA",
+                "context": {
+                    "archive_id": "arch1",
+                    "run_name": "runA",
+                    "version": "v1",
+                    "group_path": ["runA", "v1"],
+                    "category": "cat1",
+                    "dataset": "data1",
+                    "item": "item1",
+                },
+            }
+        ]
+
+        handler = Mock()
+        handler.manifest = {"runs": {"children": {"runA": {"children": {"v2": {}}}}}}
+        handler.get_group_categories.return_value = {"cat2": {}}
+        handler.get_category_datasets.return_value = {
+            "data2": {"type": "cfd_images", "videos": {"item2": "video.mp4"}}
+        }
+        viewer.open_archives = {"arch1": handler}
+
+        ViewerWindow.update_pane_contexts_for_selector_change(viewer)
+
+        ctx = viewer.swap_runs[0]["context"]
+        assert ctx["version"] == "v2"
+        assert ctx["category"] == "cat2"
+        assert ctx["dataset"] == "data2"
+        assert ctx["item"] == "item2"
+        print("✓ Selector updates propagate to swap run contexts")
+
+
+class TestSwapModeDedup:
+    """Regression tests for swap mode duplicate handling."""
+
+    def test_drop_same_run_twice_does_not_duplicate_swap_list(self):
+        window = Mock()
+        window.current_view_mode = "swap"
+        window.swap_runs = []
+        window.swap_current_index = 0
+        window.pane_run_refs = {0: None}
+        window.update_swap_display = Mock()
+        window.update_slider_maximum = Mock()
+        window.info_label = Mock()
+
+        window.split_pane_widget = Mock()
+        window.split_pane_widget.get_pane_count.return_value = 1
+
+        handler = Mock()
+        handler.get_runs.return_value = ["LOW_FRH"]
+        handler.manifest = {
+            "runs": {
+                "children": {
+                    "LOW_FRH": {
+                        "children": {
+                            "v1": {}
+                        }
+                    }
+                }
+            }
+        }
+        handler.get_group_categories.return_value = {"cutplanes": {}}
+        handler.get_category_datasets.return_value = {
+            "dataset": {"type": "cfd_images", "videos": {"frame": "video.mp4"}}
+        }
+
+        window.archives = Mock()
+        window.archives.get_archive.return_value = handler
+        window.archives.get_archive_label.return_value = "ER26-BL-0001"
+
+        controller = PaneOrchestrationController(window)
+        controller.update_slider_maximum = Mock()
+
+        controller.on_tree_run_dropped(0, "archive-1", "LOW_FRH")
+        controller.on_tree_run_dropped(0, "archive-1", "LOW_FRH")
+
+        assert len(window.swap_runs) == 1
+        assert window.swap_runs[0]["run_name"] == "LOW_FRH"
 
 def test_all():
     """Run all test classes."""
