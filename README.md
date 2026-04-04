@@ -137,16 +137,28 @@ Extract ZIP → Run .exe
 
 ---
 
-## 📦 Simulation Compressor Distribution
+## 📦 Python Package Installation (`aerocfd`)
 
-The `simulation_compressor` CLI tool is packaged as a standalone Python package that can be installed and integrated into other applications.
+The project is distributed as one package (`aerocfd`) with optional extras:
+
+- `aerocfd[cli]` → CLI dependencies
+- `aerocfd[app]` → desktop app dependencies
+- `aerocfd[full]` → CLI + desktop app dependencies
 
 ### For End Users
 
-Download the wheel (`.whl`) file from the [GitHub Releases](../../releases) page:
+Install from package index:
 
 ```bash
-pip install aerocfd-1.0b0.post5-py3-none-any.whl
+pip install "aerocfd[cli]"
+pip install "aerocfd[app]"
+pip install "aerocfd[full]"
+```
+
+Or install from a release artifact:
+
+```bash
+pip install "aerocfd-1.0b0.post5-py3-none-any.whl[full]"
 ```
 
 Then run:
@@ -157,25 +169,17 @@ aerocfd /path/to/simulation/folder -o output.liufs
 
 ### For Developers
 
-Include in your project's `requirements.txt`:
+Install editable with full runtime + development dependencies:
 
-```
-aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor
-```
-
-Or in `pyproject.toml`:
-
-```toml
-dependencies = [
-    "aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor",
-]
+```bash
+pip install -e ".[full,dev]"
 ```
 
 Then use in your code:
 
 ```python
-from simulation_compressor.packager import build_liufs
-from simulation_compressor.reporting import RichReporter
+from aerocfd_cli.packager import build_liufs
+from aerocfd_cli.reporting import RichReporter
 from rich.console import Console
 
 console = Console()
@@ -188,7 +192,7 @@ archive_path = build_liufs(
 )
 ```
 
-See [simulation_compressor/README.md](simulation_compressor/README.md) for full documentation.
+See [aerocfd_cli/README.md](aerocfd_cli/README.md) for full documentation.
 
 ---
 
@@ -203,13 +207,13 @@ See [simulation_compressor/README.md](simulation_compressor/README.md) for full 
 Install dependencies:
 
 ```
-pip install -r requirements.txt
+pip install -e ".[full,dev]"
 ```
 
 Run locally:
 
 ```
-python app/main.py
+python -m aerocfd_app
 ```
 
 ---

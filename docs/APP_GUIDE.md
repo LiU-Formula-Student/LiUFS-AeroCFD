@@ -92,6 +92,20 @@ Main application window and entry point:
 
 ## How to Use
 
+### Installation via pip
+
+Install app dependencies:
+
+```bash
+pip install "aerocfd[app]"
+```
+
+Install everything (app + CLI):
+
+```bash
+pip install "aerocfd[full]"
+```
+
 ### Running the Application
 
 **Option 1: Using the launcher script (Recommended)**
@@ -105,20 +119,20 @@ cd /home/gustav/Documents/LiUFS/AeroCFD
 
 ```bash
 cd /home/gustav/Documents/LiUFS/AeroCFD
-python -m app
+python -m aerocfd_app
 ```
 
 **Option 3: Direct execution**
 
 ```bash
 cd /home/gustav/Documents/LiUFS/AeroCFD
-python app/main.py
+python aerocfd_app/main.py
 ```
 
 Or if virtual environment is already activated:
 
 ```bash
-python -m app
+python -m aerocfd_app
 ```
 
 ### Opening a File

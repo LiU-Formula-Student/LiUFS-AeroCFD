@@ -19,17 +19,20 @@ changelog:
       2. Extract it with `tar -xzf liufs-viewer-linux.tar.gz`.
       3. Run `./liufs-viewer`.
 
-    ### Python CLI/package (`simulation_compressor`)
+    ### Python package (`aerocfd`)
 
-    - Download the wheel (`*.whl`) from **Assets**.
-    - Install with:
+    - Install from release wheel (`*.whl`) with extras:
       ```bash
-      pip install <wheel-file-name>.whl
+      pip install "<wheel-file-name>.whl[cli]"
+      pip install "<wheel-file-name>.whl[app]"
+      pip install "<wheel-file-name>.whl[full]"
       ```
 
-    - Or install from source archive (`*.tar.gz`) with:
+    - Install from release source archive (`*.tar.gz`) with extras:
       ```bash
-      pip install <source-archive-name>.tar.gz
+      pip install "<source-archive-name>.tar.gz[cli]"
+      pip install "<source-archive-name>.tar.gz[app]"
+      pip install "<source-archive-name>.tar.gz[full]"
       ```
 
     ## What's Changed

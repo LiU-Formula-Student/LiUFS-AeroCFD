@@ -85,7 +85,7 @@ Windows (PowerShell):
 ## PyInstaller Configuration
 
 - File: `viewer.spec`
-- Defines the desktop app build using `app/main.py`
+- Defines the desktop app build using `aerocfd_app/main.py`
 - Produces onedir output named `liufs-viewer`
 
 ## Notes

@@ -159,14 +159,14 @@ Updated imports in test files:
 - Move `view_components.py` to `app/ui/widgets/panes.py`
 
 ### Phase 4: Update imports ✓
-- Update `app/main.py` imports
+- Update `aerocfd_app/main.py` imports
 - Update all test file imports
 - Update `app/__main__.py` if needed
 
 ### Phase 5: Create orchestrator (Future)
 - Extract `ViewerWindow` to `app/ui/viewer_window.py`
 - Refactor `ViewerWindow` to use core modules
-- Keep `app/main.py` as thin entry point
+- Keep `aerocfd_app/main.py` as thin entry point
 - Update event handlers to delegate to core services
 
 ## Benefits
@@ -224,14 +224,14 @@ Updated imports in test files:
 - `app/liufs_handler.py`
 - `app/video_player.py`
 - `app/version.py`
-- `simulation_compressor/` (external package)
+- `aerocfd_cli/` (external package)
 
 ### Deleted (consolidated)
 - `app/file_tree.py` → `app/ui/widgets/file_tree.py`
 - `app/view_components.py` → `app/ui/widgets/panes.py`
 
 ### Updated
-- `app/main.py` - Updated imports
+- `aerocfd_app/main.py` - Updated imports
 - All test files - Updated imports
 
 ### Created

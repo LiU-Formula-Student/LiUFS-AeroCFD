@@ -1,12 +1,13 @@
-# simulation_compressor Distribution & Packaging
+# aerocfd Distribution & Packaging
 
-This document describes how `simulation_compressor` is packaged and distributed as a standalone Python package.
+This document describes how `aerocfd` is packaged as one distribution with optional extras.
 
 ## Overview
 
-`simulation_compressor` is built as a distributable Python package that can be:
-1. **Installed as a CLI tool** - for end-users who want to use the packager independently
-2. **Installed as a library** - for developers building applications that need CFD packaging functionality
+`aerocfd` is built as one distributable package that can be installed in different modes:
+1. **CLI mode** - `pip install "aerocfd[cli]"`
+2. **App mode** - `pip install "aerocfd[app]"`
+3. **Full mode** - `pip install "aerocfd[full]"`
 
 ## Package Structure
 
@@ -16,15 +17,19 @@ AeroCFD/
 ├── MANIFEST.in                 # Distribution file inclusion rules
 ├── dist/                       # Built distributions
 │   ├── aerocfd-1.0b0.post5-py3-none-any.whl
-│   └── simulation_compressor-0.1.0.tar.gz
-└── simulation_compressor/      # Package source
+│   └── aerocfd-1.0b0.post5.tar.gz
+├── aerocfd_cli/               # CLI package source
     ├── __init__.py
     ├── __main__.py
     ├── encoder.py
     ├── packager.py
     ├── reporting.py
-    ├── scanner.py
-    └── README.md
+   ├── scanner.py
+   └── README.md
+└── aerocfd_app/               # Desktop app package source
+   ├── main.py
+   ├── ui/
+   └── ...
 ```
 
 ## Building
@@ -38,7 +43,7 @@ From the project root:
 pip install build
 
 # Build both wheel (.whl) and source distribution (.tar.gz)
-python -m build
+pyproject-build
 ```
 
 Artifacts are created in the `dist/` directory.
@@ -46,14 +51,14 @@ Artifacts are created in the `dist/` directory.
 ### Manual Testing of the Built Wheel
 
 ```bash
-# Install from local wheel
-pip install dist/aerocfd-1.0b0.post5-py3-none-any.whl
+# Install from local wheel (full runtime)
+pip install "dist/aerocfd-1.0b0.post5-py3-none-any.whl[full]"
 
 # Test the CLI command
-liufs-compressor --help
+aerocfd --help
 
 # Use the Python API
-python -c "from simulation_compressor.packager import build_liufs; print(build_liufs.__doc__)"
+python -c "from aerocfd_cli.packager import build_liufs; print(build_liufs.__doc__)"
 ```
 
 ## Distribution Methods
@@ -65,7 +70,7 @@ The CI/CD pipeline automatically builds and attaches wheels to GitHub releases:
 1. Create a GitHub release (this triggers the workflow)
 2. The CI automatically:
    - Builds desktop application distributions
-   - Builds the `simulation_compressor` wheel and source distribution
+   - Builds the `aerocfd` wheel and source distribution
    - Attaches all artifacts to the release
 3. Users download from the release page
 
@@ -78,7 +83,7 @@ Users can install directly from the repository:
 pip install git+https://github.com/LiUFS/AeroCFD.git
 
 # Or install editable for development
-pip install -e git+https://github.com/LiUFS/AeroCFD.git#egg=simulation_compressor
+pip install -e "git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#egg=aerocfd[full]"
 ```
 
 ### 3. **Local Installation**
@@ -87,7 +92,7 @@ For testing locally:
 
 ```bash
 # From project root
-pip install -e .
+pip install -e ".[full]"
 
 # This allows modifications to be reflected without reinstalling
 ```
@@ -97,14 +102,14 @@ pip install -e .
 ### As a CLI Tool
 
 ```bash
-liufs-compressor /path/to/simulation -o output.liufs --fps 12
+aerocfd /path/to/simulation -o output.liufs --fps 12
 ```
 
 ### As a Library
 
 ```python
-from simulation_compressor.packager import build_liufs
-from simulation_compressor.reporting import RichReporter
+from aerocfd_cli.packager import build_liufs
+from aerocfd_cli.reporting import RichReporter
 from rich.console import Console
 
 console = Console()
@@ -127,9 +132,12 @@ print(f"Created: {archive}")
 **Version:** `0.1.0`
 **Python:** `>=3.12`
 **License:** MIT
-**Dependencies:**
-  - `opencv-python>=4.8.0`
-  - `rich>=13.0.0`
+**Default dependencies:** none
+
+**Optional extras:**
+   - `cli`: `opencv-python`, `rich`
+   - `app`: `opencv-python`, `PySide6`
+   - `full`: `opencv-python`, `rich`, `PySide6`
 
 ### CLI Entry Point
 
@@ -137,7 +145,7 @@ The package provides a console script entry point:
 
 ```
 [console_scripts]
-aerocfd = simulation_compressor.__main__:main
+aerocfd = aerocfd_cli.__main__:main
 ```
 
 This is automatically available after installation via pip.
@@ -148,14 +156,14 @@ This is automatically available after installation via pip.
 
 On release publication:
 1. Builds desktop applications (Windows, macOS, Linux)
-2. Builds `simulation_compressor` wheel and source distribution
+2. Builds `aerocfd` wheel and source distribution
 3. Attaches all artifacts to the GitHub release
 
 ### CI Workflow (`.github/workflows/ci.yml`)
 
 On push/PR to `develop`:
 1. Runs component tests
-2. Builds the `simulation_compressor` package
+2. Builds the `aerocfd` package
 3. Verifies wheel contents
 
 ## Development
@@ -164,7 +172,7 @@ On push/PR to `develop`:
 
 ```bash
 # From project root, install with dev dependencies
-pip install -e ".[dev]"
+pip install -e ".[full,dev]"
 ```
 
 This installs:
@@ -176,16 +184,16 @@ This installs:
 To view the entry point details:
 
 ```bash
-python -c "import simulation_compressor.__main__; help(simulation_compressor.__main__.main)"
+python -c "import aerocfd_cli.__main__; help(aerocfd_cli.__main__.main)"
 ```
 
 ## Troubleshooting
 
-### "liufs-compressor command not found"
+### "aerocfd command not found"
 
 Ensure the package is installed:
 ```bash
-pip list | grep simulation
+pip show aerocfd
 ```
 
 If not installed, install from wheel or git:
@@ -195,10 +203,10 @@ pip install /path/to/aerocfd-1.0b0.post5-py3-none-any.whl
 
 ### Import Errors After Installation
 
-If you get `ModuleNotFoundError: No module named 'simulation_compressor'`:
+If you get `ModuleNotFoundError: No module named 'aerocfd_cli'`:
 
-1. Verify installation: `pip show simulation-compressor`
-2. Reinstall: `pip reinstall -r requirements` or `pip install -e .`
+1. Verify installation: `pip show aerocfd`
+2. Reinstall: `pip install --force-reinstall "aerocfd[full]"` or `pip install -e ".[full]"`
 3. Check Python version: must be Python 3.12+
 
 ### Wheel Build Fails
@@ -210,7 +218,7 @@ pip install --upgrade build setuptools wheel
 
 Then rebuild:
 ```bash
-python -m build
+pyproject-build
 ```
 
 ## Next Steps
@@ -218,11 +226,11 @@ python -m build
 1. **Publish to PyPI** (optional)
    - Create PyPI account
    - Build and upload: `python -m twine upload dist/*`
-   - Then users can: `pip install simulation-compressor`
+   - Then users can: `pip install "aerocfd[full]"`
 
 2. **Documentation**
    - Full API documentation (docstrings)
-   - Usage examples in `simulation_compressor/README.md`
+   - Usage examples in `aerocfd_cli/README.md`
    - Integration guide for other projects
 
 3. **Testing**

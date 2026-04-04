@@ -18,7 +18,7 @@ Implemented comprehensive error handling and robustness improvements to prepare 
   - Manifest structure validation (complete hierarchy)
 - ✅ Detailed, user-friendly error messages with context and recovery suggestions
 
-### 2. **Improved UI Error Handling** (`app/main.py`)
+### 2. **Improved UI Error Handling** (`aerocfd_app/main.py`)
 
 #### Error Display Strategy:
 - **Pop-up Dialogs** for critical errors (must be acknowledged):
@@ -67,7 +67,7 @@ python tests/test_error_handling.py
 ```
 
 ### Manual UI Testing:
-1. Start the app: `python app/main.py`
+1. Start the app: `python aerocfd_app/main.py`
 2. Open File → Open .liufs File
 3. Navigate to `tests/broken_liufs_files/`
 4. Try different broken files and observe error handling
@@ -95,7 +95,7 @@ python tests/test_error_handling.py
 ## Files Modified
 
 - `app/liufs_handler.py` - Enhanced validation + custom exceptions
-- `app/main.py` - Improved error handling + user feedback
+- `aerocfd_app/main.py` - Improved error handling + user feedback
 - `tests/test_error_handling.py` - New test suite
 - `tests/broken_liufs_files/` - 7 test files + README
 - `ERROR_HANDLING.md` - Documentation

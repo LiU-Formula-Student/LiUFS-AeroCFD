@@ -20,7 +20,7 @@ This directory contains broken `.liufs` files for testing error handling and rob
 
 1. **Start the application:**
    ```bash
-   python app/main.py
+   python aerocfd_app/main.py
    ```
 
 2. **Open a broken file:**

@@ -20,7 +20,7 @@ Expected output: `7 passed, 0 failed, 0 skipped`
 
 ### 2. Test in the UI (2-3 minutes)
 ```bash
-python app/main.py
+python aerocfd_app/main.py
 ```
 
 Then:
@@ -95,7 +95,7 @@ Critical Error (Pop-up)          Warning/Info (Label)
    - Multi-layer validation logic
    - Detailed error messages
 
-2. **app/main.py** (≈200 lines modified)
+2. **aerocfd_app/main.py** (≈200 lines modified)
    - Error type differentiation
    - Pop-up dialogs for critical errors
    - Info label for warnings/success

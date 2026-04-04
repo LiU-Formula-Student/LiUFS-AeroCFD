@@ -36,7 +36,7 @@ manifest.json is incomplete: missing fields ['runs', 'simulation_name'].
 
 ### 2. Improved UI Error Handling
 
-**File:** `app/main.py`
+**File:** `aerocfd_app/main.py`
 
 #### Error Display Strategy:
 - **Critical Errors** → Pop-up dialogs (user must acknowledge)
@@ -119,7 +119,7 @@ All 7 tests pass:
 
 1. Start the application:
    ```bash
-   python app/main.py
+   python aerocfd_app/main.py
    ```
 
 2. Try opening broken test files:
