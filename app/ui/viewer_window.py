@@ -515,126 +515,13 @@ class ViewerWindow(QMainWindow):
     
     def update_slider_maximum(self):
         """Update frame slider maximum based on currently loaded panes."""
-        if not self.split_pane_widget:
-            return
-        
-        # Collect frame counts from all loaded panes
-        frame_counts = []
-        for pane_id in range(self.split_pane_widget.get_pane_count()):
-            run_ref = self.pane_run_refs.get(pane_id)
-            if run_ref and run_ref.get("context"):
-                count = self.get_video_frame_count_for_pane(run_ref)
-                if count > 0:
-                    frame_counts.append(count)
-        
-        # Also add primary video player if available
-        player = None
-        if hasattr(self, "media") and hasattr(self, "state") and self.media and self.state:
-            player = self.media.get_video_player(self.state.current_archive_id, self.state.current_run_name)
-        elif hasattr(self, "video_player"):
-            player = self.video_player
-        if player:
-            frame_counts.append(player.get_total_frames())
-        
-        # Set slider to minimum of all counts (so all panes can show all frames)
-        if frame_counts:
-            max_frames = min(frame_counts)
-            self.frame_slider.blockSignals(True)
-            self.frame_slider.setMaximum(max(max_frames - 1, 0))
-            self.frame_slider.setValue(0)
-            self.frame_slider.blockSignals(False)
-            self.frame_slider.setEnabled(True)
-        else:
-            self.frame_slider.setMaximum(0)
-            self.frame_slider.setEnabled(False)
+        controller = getattr(self, "pane_orchestration", None) or PaneOrchestrationController(self)
+        controller.update_slider_maximum()
 
     def load_selected_media(self):
         """Load currently selected video or static image."""
-        archive_id = self.state.current_archive_id
-        run_name = self.state.current_run_name
-        if not archive_id or not run_name:
-            return
-
-        category_name = self.category_combo.currentText()
-        dataset_name = self.dataset_combo.currentText()
-        item_name = self.item_combo.currentText()
-        if not category_name or not dataset_name or not item_name:
-            return
-
-        dataset_node = self.state.current_datasets.get(dataset_name)
-        if not dataset_node:
-            return
-
-        try:
-            handler = self.archives.get_archive(archive_id)
-            if not handler:
-                return
-            
-            data_type = dataset_node.get("type")
-
-            if data_type == "cfd_images":
-                rel_video_path = (dataset_node.get("videos") or {}).get(item_name)
-                if not isinstance(rel_video_path, str):
-                    self.info_label.clear()
-                    self.info_label.appendPlainText("⚠ Warning: Video path not found in manifest")
-                    return
-
-                archive_path = handler.resolve_archive_path(self.state.current_group_path, rel_video_path)
-                player = self.media.get_video_player(archive_id, archive_path)
-                if not player:
-                    self.info_label.clear()
-                    self.info_label.appendPlainText(f"❌ Error: Cannot load video")
-                    return
-
-                self.state.set_media_type("video")
-                self.state.set_video_path(archive_path)
-                frame_count = player.get_total_frames()
-                self.frame_slider.setMaximum(max(frame_count - 1, 0))
-                self.frame_slider.setValue(0)
-                self.frame_slider.setEnabled(frame_count > 0)
-
-                self.display_frame(0)
-                self.update_all_panes()
-                self.update_slider_maximum()
-                self.info_label.clear()
-                self.info_label.appendPlainText(
-                    f"✓ Loaded: {category_name}/{dataset_name}/{item_name}\n"
-                    f"  Frames: {frame_count} | FPS: {player.fps:.2f}"
-                )
-
-            elif data_type == "3d_views":
-                files = dataset_node.get("files") or []
-                matching = [path for path in files if isinstance(path, str) and Path(path).name == item_name]
-                if not matching:
-                    self.info_label.clear()
-                    self.info_label.appendPlainText("⚠ Warning: Image path not found in manifest")
-                    return
-
-                archive_path = handler.resolve_archive_path(self.state.current_group_path, matching[0])
-                pixmap = self.media.load_static_image(archive_id, archive_path)
-                if not pixmap:
-                    self.info_label.clear()
-                    self.info_label.appendPlainText(f"❌ Error: Cannot read image file")
-                    return
-
-                self.state.set_media_type("image")
-                self.frame_slider.setMaximum(0)
-                self.frame_slider.setEnabled(False)
-                
-                pane = self.split_pane_widget.get_pane(0)
-                if pane:
-                    pane.set_content(f"{category_name}/{dataset_name}/{item_name}", pixmap)
-                self.info_label.clear()
-                self.info_label.appendPlainText(
-                    f"✓ Loaded: {category_name}/{dataset_name}/{item_name}\n"
-                    f"  Size: {pixmap.width()}x{pixmap.height()} px"
-                )
-            else:
-                self.info_label.clear()
-                self.info_label.appendPlainText(f"⚠ Warning: Unknown media type '{data_type}'")
-        except Exception as e:
-            self.info_label.clear()
-            self.info_label.appendPlainText(f"❌ Error: {str(e)}")
+        controller = getattr(self, "selection_orchestration", None) or SelectionOrchestrationController(self)
+        controller.load_selected_media()
     
     def display_frame(self, frame_index: int):
         """Display a specific frame in all panes."""
