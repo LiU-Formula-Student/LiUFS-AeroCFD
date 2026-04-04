@@ -9,9 +9,9 @@ from typing import Optional, Dict, Any
 from PySide6.QtWidgets import (
     QMainWindow, QMessageBox, QFileDialog,
     QDialog, QDialogButtonBox, QLineEdit, QPlainTextEdit,
-    QVBoxLayout, QLabel
+    QVBoxLayout, QLabel, QApplication
 )
-from PySide6.QtCore import Qt, qVersion, QTimer
+from PySide6.QtCore import Qt, qVersion, QTimer, QMimeData
 from PySide6.QtGui import QKeySequence, QShortcut, QPixmap
 
 from ..liufs_handler import LiufsValidationError
@@ -19,6 +19,7 @@ from aerocfd_cli.packager import DuplicateRunError, append_run_to_liufs
 from ..version import APP_VERSION
 
 from .widgets.panes import GUIReporter, AppendRunWorker, DetachedImageWindow
+from .widgets.help_dialog import HelpDialog
 from .controllers import PaneOrchestrationController, SelectionOrchestrationController
 from .ui_builder import UIBuilder
 from ..core.view_state import ViewState
@@ -26,6 +27,7 @@ from ..core.archive_manager import ArchiveManager
 from ..core.media_loader import MediaController
 from ..core.pane_manager import PaneManager
 from ..core.export_service import ExportService
+from ..core.diagnostics import collect_diagnostics
 
 
 class ViewerWindow(QMainWindow):
@@ -88,6 +90,63 @@ class ViewerWindow(QMainWindow):
         )
 
         QMessageBox.information(self, "Application Info", info_text)
+    
+    def show_help_dialog(self):
+        """Show in-app help dialog with shortcuts and usage guide."""
+        dialog = HelpDialog(self)
+        dialog.exec()
+    
+    def show_report_issue_dialog(self):
+        """Show report issue dialog with diagnostics copying."""
+        sim_name = "No file loaded"
+        if self.state.current_archive_id:
+            try:
+                handler = self.archives.get_archive(self.state.current_archive_id)
+                if handler:
+                    sim_name = handler.get_simulation_name()
+            except Exception:
+                sim_name = "Unknown"
+
+        diagnostics = collect_diagnostics(sim_name)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Report Issue / Copy Diagnostics")
+        dialog.setGeometry(100, 100, 700, 500)
+
+        layout = QVBoxLayout(dialog)
+
+        # Instructions label
+        instructions = QLabel(
+            "Copy the diagnostics below and paste them into a GitHub issue.\n"
+            "Include steps to reproduce and a description of the problem."
+        )
+        layout.addWidget(instructions)
+
+        # Diagnostics text area
+        diagnostics_text = QPlainTextEdit()
+        diagnostics_text.setPlainText(diagnostics)
+        diagnostics_text.setReadOnly(True)
+        layout.addWidget(diagnostics_text)
+
+        # Buttons
+        button_layout = QVBoxLayout()
+        
+        copy_btn = QMessageBox.StandardButton.Ok
+        from PySide6.QtWidgets import QPushButton
+        
+        copy_button = QPushButton("Copy to Clipboard")
+        copy_button.clicked.connect(
+            lambda: QApplication.clipboard().setText(diagnostics)
+        )
+        
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+
+        button_layout.addWidget(copy_button)
+        button_layout.addWidget(close_button)
+        layout.addLayout(button_layout)
+
+        dialog.exec()
     
     def setup_shortcuts(self):
         """Setup keyboard shortcuts."""
