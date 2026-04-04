@@ -75,6 +75,13 @@ class TestViewerShortcuts:
         assert not shortcut.isEmpty()
         assert shortcut.toString() == "Ctrl+E"
 
+    def test_shortcut_ctrl_l_detached_window(self):
+        """Test Ctrl+L is a valid key sequence."""
+        from PySide6.QtGui import QKeySequence
+        shortcut = QKeySequence("Ctrl+L")
+        assert not shortcut.isEmpty()
+        assert shortcut.toString() == "Ctrl+L"
+
     def test_shortcut_arrow_keys(self):
         """Test arrow key constants are available."""
         from PySide6.QtCore import Qt
@@ -90,6 +97,7 @@ class TestViewerShortcuts:
             ("Ctrl+4", "Ctrl+4"),
             ("Ctrl+S", "Ctrl+S"),
             ("Ctrl+E", "Ctrl+E"),
+            ("Ctrl+L", "Ctrl+L"),
         ],
     )
     def test_all_shortcuts_valid(self, key_sequence, expected_name):
@@ -109,6 +117,7 @@ class TestViewerShortcuts:
             QKeySequence("Ctrl+4"),
             QKeySequence("Ctrl+S"),
             QKeySequence("Ctrl+E"),
+            QKeySequence("Ctrl+L"),
         ]
 
         # Convert to strings for comparison

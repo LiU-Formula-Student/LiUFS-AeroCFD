@@ -163,6 +163,11 @@ class ViewerWindow(QMainWindow):
         # Export
         QShortcut(QKeySequence("Ctrl+E"), self, self.export_current_frame)
 
+        # Detached pop-out window for current pane
+        self.detach_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
+        self.detach_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.detach_shortcut.activated.connect(self.launch_detached_window)
+
         # Global arrow key shortcuts (work even when file tree has focus)
         self.left_arrow_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
         self.left_arrow_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
@@ -779,6 +784,30 @@ class ViewerWindow(QMainWindow):
             pixmap = pane.label.pixmap()
             return pixmap if pixmap else None
         return None
+
+    def launch_detached_window(self):
+        """Open or refresh a detached window with the currently visible pane content."""
+        pane = self.split_pane_widget.get_pane(0)
+        pixmap = self.get_current_pixmap()
+
+        if not pane or pixmap is None:
+            self.info_label.appendPlainText("⚠ Warning: No frame available to launch in detached window")
+            return
+
+        title = "Detached View"
+        if isinstance(pane.run_info, dict) and pane.run_info.get("title"):
+            title = str(pane.run_info.get("title"))
+
+        window_key = "pane_0"
+        detached = self.detached_windows.get(window_key)
+        if detached is None:
+            detached = DetachedImageWindow(title)
+            self.detached_windows[window_key] = detached
+
+        detached.update_content(title, pixmap)
+        detached.show()
+        detached.raise_()
+        detached.activateWindow()
 
     def export_current_frame(self):
         """Export current frame as image file."""
