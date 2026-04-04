@@ -9,7 +9,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.liufs_handler import LiufsFileHandler, LiufsValidationError
+from aerocfd_app.liufs_handler import LiufsFileHandler, LiufsValidationError
 
 
 def test_error_handling():

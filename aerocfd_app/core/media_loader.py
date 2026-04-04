@@ -10,8 +10,8 @@ from typing import Dict, Optional, Tuple, Any
 
 from PySide6.QtGui import QPixmap
 
-from app.video_player import VideoPlayer
-from app.core.archive_manager import ArchiveManager
+from aerocfd_app.video_player import VideoPlayer
+from aerocfd_app.core.archive_manager import ArchiveManager
 
 
 class MediaController:

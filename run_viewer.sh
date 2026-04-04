@@ -10,4 +10,4 @@ if [ -d "$SCRIPT_DIR/venv" ]; then
 fi
 
 # Run the application
-python -m app
+python -m aerocfd_app

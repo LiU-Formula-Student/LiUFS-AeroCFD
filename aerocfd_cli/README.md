@@ -1,4 +1,4 @@
-# simulation_compressor
+# aerocfd_cli
 
 Utilities for packaging CFD simulation folders into a single `.liufs` archive.
 
@@ -11,18 +11,26 @@ This package scans a simulation directory tree, classifies leaf folders, and the
 
 ## Installation
 
-### As a standalone CLI tool
+### Via the `aerocfd` package (recommended)
+
+Install CLI mode:
+
+```bash
+pip install "aerocfd[cli]"
+```
+
+Install full mode (CLI + desktop app dependencies):
+
+```bash
+pip install "aerocfd[full]"
+```
+
+### From release artifacts
 
 Install from a wheel file (available in GitHub releases):
 
 ```bash
-pip install aerocfd-1.0b0.post5-py3-none-any.whl
-```
-
-Or from git:
-
-```bash
-pip install git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor
+pip install "aerocfd-1.0b0.post5-py3-none-any.whl[cli]"
 ```
 
 ### As a package dependency
@@ -30,14 +38,14 @@ pip install git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdire
 Add to your `requirements.txt`:
 
 ```
-aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor
+aerocfd[cli]
 ```
 
 Or in `pyproject.toml`:
 
 ```toml
 dependencies = [
-  "aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#subdirectory=simulation_compressor",
+  "aerocfd[cli]",
 ]
 ```
 
@@ -64,7 +72,7 @@ aerocfd <source_dir> [options]
 Or from the project root (if not installed using the editable install):
 
 ```bash
-python -m simulation_compressor <source_dir> [options]
+python -m aerocfd_cli <source_dir> [options]
 ```
 
 ### Options
@@ -90,7 +98,7 @@ aerocfd /path/to/ER26-BL-0001 \
 ## Python API
 
 ```python
-from simulation_compressor.packager import append_run_to_liufs, build_liufs
+from aerocfd_cli.packager import append_run_to_liufs, build_liufs
 
 archive_path = build_liufs(
     source_dir="/path/to/ER26-BL-0001",

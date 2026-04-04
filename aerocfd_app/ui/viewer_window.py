@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, qVersion, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut, QPixmap
 
 from ..liufs_handler import LiufsValidationError
-from simulation_compressor.packager import DuplicateRunError, append_run_to_liufs
+from aerocfd_cli.packager import DuplicateRunError, append_run_to_liufs
 from ..version import APP_VERSION
 
 from .widgets.panes import GUIReporter, AppendRunWorker, DetachedImageWindow

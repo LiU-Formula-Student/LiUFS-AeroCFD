@@ -5,7 +5,7 @@ Manages open .liufs archives and provides archive-related queries.
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-from app.liufs_handler import LiufsFileHandler, LiufsValidationError
+from aerocfd_app.liufs_handler import LiufsFileHandler, LiufsValidationError
 
 
 class ArchiveManager:

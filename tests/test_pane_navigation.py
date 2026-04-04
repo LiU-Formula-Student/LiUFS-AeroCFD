@@ -46,8 +46,8 @@ except Exception as exc:  # pragma: no cover - platform dependent
         )
     raise
 
-from app.ui.viewer_window import ViewerWindow
-from app.ui.widgets.panes import DetachedImageWindow, ImagePane
+from aerocfd_app.ui.viewer_window import ViewerWindow
+from aerocfd_app.ui.widgets.panes import DetachedImageWindow, ImagePane
 
 
 def _get_qapp():

@@ -9,8 +9,8 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel
 
-from simulation_compressor.packager import DuplicateRunError, append_run_to_liufs
-from simulation_compressor.reporting import BaseReporter, ProgressEvent
+from aerocfd_cli.packager import DuplicateRunError, append_run_to_liufs
+from aerocfd_cli.reporting import BaseReporter, ProgressEvent
 
 
 class GUIReporter(BaseReporter):

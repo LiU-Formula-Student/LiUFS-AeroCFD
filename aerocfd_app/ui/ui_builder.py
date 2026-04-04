@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 
-from app.ui.widgets.file_tree import FileTreeWidget
-from app.ui.widgets.panes import SplitPaneWidget
+from aerocfd_app.ui.widgets.file_tree import FileTreeWidget
+from aerocfd_app.ui.widgets.panes import SplitPaneWidget
 
 
 class UIBuilder:

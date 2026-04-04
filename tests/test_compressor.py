@@ -9,18 +9,18 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from simulation_compressor import CFDImage, FILE_MAPPING
-from simulation_compressor import __main__ as cli
-from simulation_compressor.encoder import (
+from aerocfd_cli import CFDImage, FILE_MAPPING
+from aerocfd_cli import __main__ as cli
+from aerocfd_cli.encoder import (
     build_video_from_images,
     count_image_files,
     find_3d_images,
     find_cfd_images,
     is_image_file,
 )
-from simulation_compressor.packager import DuplicateRunError, append_run_to_liufs, build_liufs
-from simulation_compressor.reporting import BaseReporter, ProgressEvent
-from simulation_compressor.scanner import build_structure
+from aerocfd_cli.packager import DuplicateRunError, append_run_to_liufs, build_liufs
+from aerocfd_cli.reporting import BaseReporter, ProgressEvent
+from aerocfd_cli.scanner import build_structure
 
 
 class RecordingReporter(BaseReporter):
@@ -96,7 +96,7 @@ def test_encoder_helpers_find_expected_images(tmp_path: Path, monkeypatch: pytes
     ]
 
     # Avoid depending on a real ffmpeg binary in the test environment.
-    monkeypatch.setattr("simulation_compressor.encoder.shutil.which", lambda _: None)
+    monkeypatch.setattr("aerocfd_cli.encoder.shutil.which", lambda _: None)
     reporter = RecordingReporter()
     assert build_video_from_images(cfd_images, output_dir=tmp_path / "videos", reporter=reporter) == []
     assert any(event.kind == "error" for event in reporter.events)
@@ -133,8 +133,8 @@ def test_build_liufs_creates_manifest_and_counts_progress(tmp_path: Path, monkey
                 reporter.advance_progress(1)
         return created_files
 
-    monkeypatch.setattr("simulation_compressor.packager.build_video_from_images", fake_build_video_from_images)
-    monkeypatch.setattr("simulation_compressor.packager.convert_images_to_webp", fake_convert_images_to_webp)
+    monkeypatch.setattr("aerocfd_cli.packager.build_video_from_images", fake_build_video_from_images)
+    monkeypatch.setattr("aerocfd_cli.packager.convert_images_to_webp", fake_convert_images_to_webp)
 
     output_file = tmp_path / "out.liufs"
     reporter = RecordingReporter()
@@ -192,8 +192,8 @@ def test_append_run_to_liufs_adds_a_new_run(tmp_path: Path, monkeypatch: pytest.
                 reporter.advance_progress(1)
         return created_files
 
-    monkeypatch.setattr("simulation_compressor.packager.build_video_from_images", fake_build_video_from_images)
-    monkeypatch.setattr("simulation_compressor.packager.convert_images_to_webp", fake_convert_images_to_webp)
+    monkeypatch.setattr("aerocfd_cli.packager.build_video_from_images", fake_build_video_from_images)
+    monkeypatch.setattr("aerocfd_cli.packager.convert_images_to_webp", fake_convert_images_to_webp)
 
     archive_path = build_liufs(base_source, output_file=tmp_path / "base.liufs")
     result = append_run_to_liufs(new_run, archive_path)
@@ -219,8 +219,8 @@ def test_append_run_to_liufs_detects_duplicates(tmp_path: Path, monkeypatch: pyt
         output_path.write_text("video", encoding="utf-8")
         return [str(output_path)]
 
-    monkeypatch.setattr("simulation_compressor.packager.build_video_from_images", fake_build_video_from_images)
-    monkeypatch.setattr("simulation_compressor.packager.convert_images_to_webp", lambda *args, **kwargs: [])
+    monkeypatch.setattr("aerocfd_cli.packager.build_video_from_images", fake_build_video_from_images)
+    monkeypatch.setattr("aerocfd_cli.packager.convert_images_to_webp", lambda *args, **kwargs: [])
 
     archive_path = build_liufs(source, output_file=tmp_path / "base.liufs")
 
