@@ -236,7 +236,8 @@ def _build_manifest_tree(
     collect(structure_node, manifest_node, package_root)
 
     package_workers = _resolve_workers(workers, len(leaf_jobs))
-    media_workers = workers if package_workers <= 1 else 1
+    effective_workers = workers if workers is not None and workers > 0 else (os.cpu_count() or 1)
+    media_workers = max(1, min(3, effective_workers // max(package_workers, 1)))
 
     if package_workers <= 1:
         for leaf_info, leaf_root, leaf_manifest in leaf_jobs:
