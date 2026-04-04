@@ -163,6 +163,51 @@ def test_build_liufs_creates_manifest_and_counts_progress(tmp_path: Path, monkey
     assert run1["unknown"]["unknown_image_attempts"] == 1
 
 
+def test_build_liufs_shares_worker_budget_with_media_tasks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "source"
+    cfd_dir = source / "run1" / "cfd"
+    views_dir = source / "run1" / "views"
+
+    _write_file(cfd_dir / "X1X.png")
+    _write_file(cfd_dir / "Y1Y.png")
+    _write_file(cfd_dir / "Z1Z.png")
+    _write_file(views_dir / "top.png")
+
+    video_workers_seen: list[int | None] = []
+
+    def fake_build_video_from_images(images, output_dir, reporter=None, workers=None, **_kwargs):
+        video_workers_seen.append(workers)
+        output_path = Path(output_dir) / "XX.mp4"
+        output_path.write_text("video", encoding="utf-8")
+        if reporter is not None:
+            reporter.advance_progress(len(images))
+        return [str(output_path)]
+
+    def fake_convert_images_to_webp(image_paths, output_dir, reporter=None, workers=None, **_kwargs):
+        created_files = []
+        for image_path in image_paths:
+            output_path = Path(output_dir) / f"{Path(image_path).stem}.webp"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("webp", encoding="utf-8")
+            created_files.append(str(output_path))
+            if reporter is not None:
+                reporter.advance_progress(1)
+        return created_files
+
+    monkeypatch.setattr("aerocfd_cli.packager.build_video_from_images", fake_build_video_from_images)
+    monkeypatch.setattr("aerocfd_cli.packager.convert_images_to_webp", fake_convert_images_to_webp)
+
+    result = build_liufs(
+        source_dir=source,
+        output_file=tmp_path / "out.liufs",
+        workers=15,
+    )
+
+    assert result.exists()
+    assert video_workers_seen
+    assert video_workers_seen[0] == 3
+
+
 def test_append_run_to_liufs_adds_a_new_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base_source = tmp_path / "base"
     existing_run = base_source / "run_a"
