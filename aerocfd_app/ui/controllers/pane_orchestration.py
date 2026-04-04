@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from numbers import Integral
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -37,7 +38,10 @@ class PaneOrchestrationController:
 
     def setup_pane_signals(self):
         for pane in self.window.split_pane_widget.panes.values():
+            if getattr(pane, "_run_drop_connected", False):
+                continue
             pane.run_dropped.connect(self.window.on_tree_run_dropped)
+            pane._run_drop_connected = True
 
     def on_tree_run_dropped(self, pane_id: int, archive_id: str, run_name: str):
         try:
@@ -107,18 +111,44 @@ class PaneOrchestrationController:
 
             # In swap mode, add to swap_runs; otherwise to pane refs
             if self.window.current_view_mode == "swap":
-                self.window.swap_runs.append(run_ref)
-                self.window.swap_current_index = 0
+                existing_index = next(
+                    (
+                        idx
+                        for idx, existing in enumerate(self.window.swap_runs)
+                        if existing.get("archive_id") == archive_id and existing.get("run_name") == run_name
+                    ),
+                    None,
+                )
+
+                if existing_index is None:
+                    self.window.swap_runs.append(run_ref)
+                    self.window.swap_current_index = len(self.window.swap_runs) - 1
+                    load_message = (
+                        f"✓ Added '{run_name}' to swap list "
+                        f"({len(self.window.swap_runs)} run(s))"
+                    )
+                else:
+                    self.window.swap_runs[existing_index] = run_ref
+                    self.window.swap_current_index = existing_index
+                    load_message = (
+                        f"✓ '{run_name}' is already in swap list "
+                        f"({existing_index + 1}/{len(self.window.swap_runs)})"
+                    )
+
                 self.window.update_swap_display()
             else:
                 self.window.pane_run_refs[pane_id] = run_ref
                 self.update_all_panes()
+                load_message = f"✓ Loaded '{run_name}' in pane {pane_id}"
             self.update_slider_maximum()
-            self.window.info_label.appendPlainText(f"✓ Loaded '{run_name}' in pane {pane_id}")
+            self.window.info_label.appendPlainText(load_message)
         except Exception as e:
             self.window.info_label.appendPlainText(f"❌ Error loading run in pane {pane_id}: {str(e)}")
 
     def clear_current_view(self):
+        if self.window.current_view_mode == "swap":
+            self.window.swap_runs = []
+            self.window.swap_current_index = 0
         self.window.pane_run_refs = {
             i: None for i in range(self.window.split_pane_widget.get_pane_count())
         }
@@ -127,6 +157,10 @@ class PaneOrchestrationController:
 
     def update_all_panes(self):
         if not self.window.split_pane_widget:
+            return
+
+        if self.window.current_view_mode == "swap":
+            self.window.update_swap_display()
             return
 
         frame_index = self.window.frame_slider.value()
@@ -171,7 +205,13 @@ class PaneOrchestrationController:
         if not version_name:
             return
 
-        for pane_id, run_ref in self.window.pane_run_refs.items():
+        current_view_mode = getattr(self.window, "current_view_mode", "single")
+        if current_view_mode == "swap":
+            run_ref_entries = list(enumerate(getattr(self.window, "swap_runs", [])))
+        else:
+            run_ref_entries = list(self.window.pane_run_refs.items())
+
+        for pane_id, run_ref in run_ref_entries:
             if not run_ref:
                 continue
 
@@ -243,19 +283,31 @@ class PaneOrchestrationController:
                 }
             )
             run_ref["context"] = pane_context
-            self.window.pane_run_refs[pane_id] = run_ref
+            if current_view_mode == "swap":
+                self.window.swap_runs[pane_id] = run_ref
+            else:
+                self.window.pane_run_refs[pane_id] = run_ref
 
     def update_slider_maximum(self):
         if not self.window.split_pane_widget:
             return
 
         frame_counts = []
-        for pane_id in range(self.window.split_pane_widget.get_pane_count()):
-            run_ref = self.window.pane_run_refs.get(pane_id)
-            if run_ref and run_ref.get("context"):
-                count = self.window.get_video_frame_count_for_pane(run_ref)
-                if count > 0:
-                    frame_counts.append(count)
+        current_view_mode = getattr(self.window, "current_view_mode", "single")
+        if current_view_mode == "swap":
+            swap_runs = getattr(self.window, "swap_runs", [])
+            for run_ref in swap_runs:
+                if run_ref and run_ref.get("context"):
+                    count = self.window.get_video_frame_count_for_pane(run_ref)
+                    if count > 0:
+                        frame_counts.append(count)
+        else:
+            for pane_id in range(self.window.split_pane_widget.get_pane_count()):
+                run_ref = self.window.pane_run_refs.get(pane_id)
+                if run_ref and run_ref.get("context"):
+                    count = self.window.get_video_frame_count_for_pane(run_ref)
+                    if count > 0:
+                        frame_counts.append(count)
 
         player = None
         if hasattr(self.window, "media") and hasattr(self.window, "state") and self.window.media and self.window.state:
@@ -269,9 +321,12 @@ class PaneOrchestrationController:
 
         if frame_counts:
             max_frames = min(frame_counts)
+            raw_current_value = self.window.frame_slider.value()
+            current_value = int(raw_current_value) if isinstance(raw_current_value, Integral) else 0
+            clamped_value = min(max(current_value, 0), max(max_frames - 1, 0))
             self.window.frame_slider.blockSignals(True)
             self.window.frame_slider.setMaximum(max(max_frames - 1, 0))
-            self.window.frame_slider.setValue(0)
+            self.window.frame_slider.setValue(clamped_value)
             self.window.frame_slider.blockSignals(False)
             self.window.frame_slider.setEnabled(True)
         else:

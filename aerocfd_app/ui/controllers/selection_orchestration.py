@@ -123,6 +123,7 @@ class SelectionOrchestrationController:
         self.populate_items_for_dataset()
 
     def populate_items_for_dataset(self):
+        previous_item = self.window.item_combo.currentText()
         dataset_name = self.window.dataset_combo.currentText()
         dataset_node = self.window.state.current_datasets.get(dataset_name, {})
 
@@ -137,6 +138,13 @@ class SelectionOrchestrationController:
         self.window.item_combo.clear()
         for item in items:
             self.window.item_combo.addItem(item)
+
+        if items:
+            if previous_item and previous_item in items:
+                self.window.item_combo.setCurrentText(previous_item)
+            else:
+                self.window.item_combo.setCurrentIndex(0)
+
         self.window.item_combo.blockSignals(False)
         self.window.item_combo.setEnabled(bool(items))
 

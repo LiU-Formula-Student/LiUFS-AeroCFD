@@ -162,26 +162,42 @@ class ViewerWindow(QMainWindow):
         
         # Export
         QShortcut(QKeySequence("Ctrl+E"), self, self.export_current_frame)
-        
-        # Frame navigation shortcuts (will be overridden in keyPressEvent for swap mode)
-        # Left/Right for frame navigation in normal modes, Up/Down for run swapping in swap mode
+
+        # Global arrow key shortcuts (work even when file tree has focus)
+        self.left_arrow_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
+        self.left_arrow_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.left_arrow_shortcut.activated.connect(self.previous_frame)
+
+        self.right_arrow_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Right), self)
+        self.right_arrow_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.right_arrow_shortcut.activated.connect(self.next_frame)
+
+        self.up_arrow_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Up), self)
+        self.up_arrow_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.up_arrow_shortcut.activated.connect(self.swap_previous_run)
+
+        self.down_arrow_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Down), self)
+        self.down_arrow_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.down_arrow_shortcut.activated.connect(self.swap_next_run)
+
+        self._update_swap_shortcut_state()
+
+    def _update_swap_shortcut_state(self):
+        """Enable/disable swap navigation shortcuts based on active mode."""
+        swap_enabled = self.current_view_mode == "swap"
+        if hasattr(self, "up_arrow_shortcut"):
+            self.up_arrow_shortcut.setEnabled(swap_enabled)
+        if hasattr(self, "down_arrow_shortcut"):
+            self.down_arrow_shortcut.setEnabled(swap_enabled)
     
     def keyPressEvent(self, event):
         """Handle key press events with context-aware behavior."""
-        from PySide6.QtCore import Qt
-        
         if event.key() == Qt.Key.Key_Left:
-            if self.current_view_mode == "swap":
-                event.ignore()  # Let other handlers process
-            else:
-                self.previous_frame()
-                return
+            self.previous_frame()
+            return
         elif event.key() == Qt.Key.Key_Right:
-            if self.current_view_mode == "swap":
-                event.ignore()  # Let other handlers process
-            else:
-                self.next_frame()
-                return
+            self.next_frame()
+            return
         elif event.key() == Qt.Key.Key_Up:
             if self.current_view_mode == "swap":
                 self.swap_previous_run()
@@ -196,6 +212,7 @@ class ViewerWindow(QMainWindow):
     def set_view_mode(self, mode: str):
         """Switch between single/2-pane/4-pane/swap view modes."""
         self.pane_orchestration.set_view_mode(mode)
+        self._update_swap_shortcut_state()
     
     def setup_pane_signals(self):
         """Connect run_dropped signals from all panes to handler."""
