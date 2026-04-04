@@ -149,6 +149,8 @@ The project is distributed as one package (`aerocfd`) with optional extras:
 
 Install from package index:
 
+PyPI project page: https://pypi.org/project/aerocfd/
+
 ```bash
 pip install "aerocfd[cli]"
 pip install "aerocfd[app]"

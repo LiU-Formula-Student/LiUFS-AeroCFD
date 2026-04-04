@@ -17,16 +17,16 @@ AeroCFD/
 ├── MANIFEST.in                 # Distribution file inclusion rules
 ├── dist/                       # Built distributions
 │   ├── aerocfd-1.0b0.post7-py3-none-any.whl
-│   └── aerocfd-1.0b0.post5.tar.gz
-├── aerocfd_cli/               # CLI package source
-    ├── __init__.py
-    ├── __main__.py
-    ├── encoder.py
-    ├── packager.py
-    ├── reporting.py
-   ├── scanner.py
-   └── README.md
-└── aerocfd_app/               # Desktop app package source
+│   └── aerocfd-1.0b0.post7.tar.gz
+├── aerocfd_cli/                # CLI package source
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── encoder.py
+│   ├── packager.py
+│   ├── reporting.py
+│   ├── scanner.py
+│   └── README.md
+└── aerocfd_app/                # Desktop app package source
    ├── main.py
    ├── ui/
    └── ...
@@ -63,7 +63,19 @@ python -c "from aerocfd_cli.packager import build_liufs; print(build_liufs.__doc
 
 ## Distribution Methods
 
-### 1. **GitHub Releases (Recommended)**
+### 1. **PyPI (Recommended)**
+
+The package is automatically published to PyPI from the release workflow.
+
+```bash
+pip install "aerocfd[cli]"
+pip install "aerocfd[app]"
+pip install "aerocfd[full]"
+```
+
+Project page: https://pypi.org/project/aerocfd/
+
+### 2. **GitHub Releases**
 
 The CI/CD pipeline automatically builds and attaches wheels to GitHub releases:
 
@@ -71,22 +83,23 @@ The CI/CD pipeline automatically builds and attaches wheels to GitHub releases:
 2. The CI automatically:
    - Builds desktop application distributions
    - Builds the `aerocfd` wheel and source distribution
+   - Publishes the package to PyPI (Trusted Publisher via OIDC)
    - Attaches all artifacts to the release
 3. Users download from the release page
 
-### 2. **Direct Installation from Repository**
+### 3. **Direct Installation from Repository**
 
 Users can install directly from the repository:
 
 ```bash
 # Install from git (requires git to be installed)
-pip install git+https://github.com/LiUFS/AeroCFD.git
+pip install "aerocfd @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git"
 
-# Or install editable for development
-pip install -e "git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git#egg=aerocfd[full]"
+# Install with extras from git
+pip install "aerocfd[full] @ git+https://github.com/LiU-Formula-Student/LiUFS-AeroCFD.git"
 ```
 
-### 3. **Local Installation**
+### 4. **Local Installation**
 
 For testing locally:
 
@@ -129,7 +142,7 @@ print(f"Created: {archive}")
 ## Package Metadata
 
 **Name:** `aerocfd`
-**Version:** `0.1.0`
+**Version:** `1.0b0.post7`
 **Python:** `>=3.12`
 **License:** MIT
 **Default dependencies:** none
@@ -157,11 +170,12 @@ This is automatically available after installation via pip.
 On release publication:
 1. Builds desktop applications (Windows, macOS, Linux)
 2. Builds `aerocfd` wheel and source distribution
-3. Attaches all artifacts to the GitHub release
+3. Publishes package artifacts to PyPI via Trusted Publisher
+4. Attaches all artifacts to the GitHub release
 
 ### CI Workflow (`.github/workflows/ci.yml`)
 
-On push/PR to `develop`:
+On push/PR to `main` and `develop`:
 1. Runs component tests
 2. Builds the `aerocfd` package
 3. Verifies wheel contents
@@ -223,16 +237,11 @@ pyproject-build
 
 ## Next Steps
 
-1. **Publish to PyPI** (optional)
-   - Create PyPI account
-   - Build and upload: `python -m twine upload dist/*`
-   - Then users can: `pip install "aerocfd[full]"`
-
-2. **Documentation**
+1. **Documentation**
    - Full API documentation (docstrings)
    - Usage examples in `aerocfd_cli/README.md`
    - Integration guide for other projects
 
-3. **Testing**
+2. **Testing**
    - Add unit tests in `tests/` directory
    - Add integration tests for build end-to-end

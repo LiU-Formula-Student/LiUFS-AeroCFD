@@ -13,6 +13,8 @@ This package scans a simulation directory tree, classifies leaf folders, and the
 
 ### Via the `aerocfd` package (recommended)
 
+PyPI project page: https://pypi.org/project/aerocfd/
+
 Install CLI mode:
 
 ```bash
