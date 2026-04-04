@@ -5,6 +5,7 @@ This script updates:
 - aerocfd_app/version.py (UI/display version)
 - aerocfd_app/__init__.py (__version__)
 - pyproject.toml ([project].version)
+- pyproject.toml (Development Status classifier)
 - README examples that reference wheel filenames
 """
 
@@ -34,8 +35,12 @@ def to_pep440(raw_version: str) -> str:
     if re.fullmatch(r"\d+(?:\.\d+)*", version):
         return version
 
-    # Pre-release tags such as 1.0-beta-2 or 1.0-beta-0.1
-    match = re.fullmatch(r"(\d+(?:\.\d+)*)-(alpha|beta|rc)-([0-9]+(?:\.[0-9]+)*)", version, flags=re.IGNORECASE)
+    # Pre-release tags such as 1.0-beta-2, 1.0-beta.2, 1.0-rc.1, or 1.0-beta-0.1
+    match = re.fullmatch(
+        r"(\d+(?:\.\d+)*)-(alpha|beta|rc)[.-]([0-9]+(?:\.[0-9]+)*)",
+        version,
+        flags=re.IGNORECASE,
+    )
     if match:
         base, phase, number_part = match.groups()
         phase_map = {"alpha": "a", "beta": "b", "rc": "rc"}
@@ -52,6 +57,26 @@ def to_pep440(raw_version: str) -> str:
     return "0.0.0"
 
 
+def classifier_for_tag(raw_version: str) -> str:
+    """Return the Development Status classifier based on the release tag.
+
+    Stable tags (e.g. v1.0.0, v1.2.3) -> 5 - Production/Stable
+    Pre-release tags (e.g. v1.1.0-beta.1, v2.0.0-rc.1) -> 4 - Beta
+    """
+    version = raw_version.strip()
+    version = re.sub(r"^[vV]", "", version)
+    version = version.strip()
+
+    if re.fullmatch(r"\d+\.\d+\.\d+", version):
+        return "Development Status :: 5 - Production/Stable"
+
+    if re.fullmatch(r"\d+\.\d+\.\d+-(alpha|beta|rc)[.-]\d+(?:\.\d+)*", version, flags=re.IGNORECASE):
+        return "Development Status :: 4 - Beta"
+
+    # Conservative default for unknown/non-release formats.
+    return "Development Status :: 4 - Beta"
+
+
 def replace_or_fail(path: Path, pattern: str, replacement: str) -> None:
     text = path.read_text(encoding="utf-8")
     updated, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE)
@@ -64,6 +89,7 @@ def main() -> int:
     raw_version = sys.argv[1] if len(sys.argv) > 1 else "dev"
     app_version = sanitize(raw_version)
     package_version = to_pep440(raw_version)
+    development_status = classifier_for_tag(raw_version)
 
     root = Path(__file__).resolve().parent.parent
     app_version_file = root / "aerocfd_app" / "version.py"
@@ -83,6 +109,11 @@ def main() -> int:
         r'^version\s*=\s*"[^"]*"$',
         f'version = "{package_version}"',
     )
+    replace_or_fail(
+        root / "pyproject.toml",
+        r'^\s*"Development Status :: [^"]+",\s*$',
+        f'    "{development_status}",',
+    )
 
     wheel_pattern = f"aerocfd-{package_version}-py3-none-any.whl"
     for relative_path in [
@@ -98,6 +129,7 @@ def main() -> int:
 
     print(f"Set app display version to: {app_version}")
     print(f"Set package version to: {package_version}")
+    print(f"Set development status classifier to: {development_status}")
     return 0
 
 
