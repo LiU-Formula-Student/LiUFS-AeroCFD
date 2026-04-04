@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "aerocfd"
 version = "1.0b0.post5"
 description = "Package CFD simulation folders into compressed .liufs archives with video-encoded cutplanes"
-readme = "simulation_compressor/README.md"
+readme = "aerocfd_cli/README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [
@@ -25,12 +25,22 @@ classifiers = [
     "Topic :: Multimedia :: Video",
 ]
 
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+cli = [
     "opencv-python>=4.8.0",
     "rich>=13.0.0",
 ]
-
-[project.optional-dependencies]
+app = [
+    "opencv-python>=4.8.0",
+    "PySide6>=6.11.0",
+]
+full = [
+    "opencv-python>=4.8.0",
+    "rich>=13.0.0",
+    "PySide6>=6.11.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -39,16 +49,19 @@ dev = [
 ]
 
 [project.scripts]
-aerocfd = "simulation_compressor.__main__:main"
+aerocfd = "aerocfd_cli.__main__:main"
+aerocfd-app = "aerocfd_app.main:main"
 
 [project.urls]
 Homepage = "https://github.com/LiU-Formula-Student/LiUFS-AeroCFD"
 Repository = "https://github.com/LiU-Formula-Student/LiUFS-AeroCFD"
-Documentation = "https://github.com/LiU-Formula-Student/LiUFS-AeroCFD#simulation_compressor"
+Documentation = "https://github.com/LiU-Formula-Student/LiUFS-AeroCFD#aerocfd_cli"
 Issues = "https://github.com/LiU-Formula-Student/LiUFS-AeroCFD/issues"
 
 [tool.setuptools]
-packages = ["simulation_compressor"]
+
+[tool.setuptools.packages.find]
+include = ["aerocfd_cli*", "aerocfd_app*"]
 
 [tool.black]
 line-length = 100

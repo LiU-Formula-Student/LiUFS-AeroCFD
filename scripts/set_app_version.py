@@ -2,8 +2,8 @@
 """Update version references for release builds.
 
 This script updates:
-- app/version.py (UI/display version)
-- app/__init__.py (__version__)
+- aerocfd_app/version.py (UI/display version)
+- aerocfd_app/__init__.py (__version__)
 - pyproject.toml ([project].version)
 - README examples that reference wheel filenames
 """
@@ -66,7 +66,7 @@ def main() -> int:
     package_version = to_pep440(raw_version)
 
     root = Path(__file__).resolve().parent.parent
-    app_version_file = root / "app" / "version.py"
+    app_version_file = root / "aerocfd_app" / "version.py"
     app_version_file.write_text(
         '"""Application version information.\n\nThis file is updated during release builds by scripts/set_app_version.py.\n"""\n\n'
         f'APP_VERSION = "{app_version}"\n',
@@ -74,7 +74,7 @@ def main() -> int:
     )
 
     replace_or_fail(
-        root / "app" / "__init__.py",
+        root / "aerocfd_app" / "__init__.py",
         r'^__version__\s*=\s*"[^"]*"$',
         f'__version__ = "{package_version}"',
     )
@@ -87,13 +87,13 @@ def main() -> int:
     wheel_pattern = f"aerocfd-{package_version}-py3-none-any.whl"
     for relative_path in [
         "README.md",
-        "simulation_compressor/README.md",
+        "aerocfd_cli/README.md",
         "docs/PACKAGING.md",
     ]:
         path = root / relative_path
         text = path.read_text(encoding="utf-8")
         text = re.sub(r"aerocfd-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
-        text = re.sub(r"simulation_compressor-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
+        text = re.sub(r"aerocfd_cli-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
         path.write_text(text, encoding="utf-8")
 
     print(f"Set app display version to: {app_version}")
