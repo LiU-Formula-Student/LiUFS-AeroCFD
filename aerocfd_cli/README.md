@@ -86,6 +86,9 @@ python -m aerocfd_cli <source_dir> [options]
 - `--extension` Video extension for CFD videos (default: `mp4`)
 - `--webp-quality` WebP quality for `3d_views` conversion, `0-100` (default: `80`)
 - `--include-unknown` Copy files from unknown leaf folders into the package
+- `--log-level` Minimum event log level: `info`, `warning`, or `error` (default: `info`)
+- `--progress-only` Show only progress/ETA bar and suppress event log lines
+- `--quiet` Disable all terminal output, including progress and errors
 
 ### Example
 
