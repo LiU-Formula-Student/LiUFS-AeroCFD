@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeRemainingColumn
+if TYPE_CHECKING:
+    from rich.console import Console
+    from rich.progress import Progress
 
 
 @dataclass
@@ -66,7 +67,16 @@ class NullReporter(BaseReporter):
 
 class RichReporter(BaseReporter):
     def __init__(self, console: Console | None = None, loglevel: LogLevel = LogLevel.INFO) -> None:
-        self.console = console or Console()
+        if console is None:
+            try:
+                from rich.console import Console as RichConsole
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError(
+                    "RichReporter requires the optional dependency 'rich'. Install with: pip install \"aerocfd[cli]\""
+                ) from exc
+            self.console = RichConsole()
+        else:
+            self.console = console
         self.loglevel = loglevel
         self._progress: Progress | None = None
         self._task_id: int | None = None
@@ -75,6 +85,14 @@ class RichReporter(BaseReporter):
 
     def _ensure_progress(self) -> Progress:
         if self._progress is None:
+            from rich.progress import (
+                BarColumn,
+                Progress,
+                SpinnerColumn,
+                TaskProgressColumn,
+                TextColumn,
+                TimeRemainingColumn,
+            )
             self._progress = Progress(
                 SpinnerColumn(),
                 TextColumn("[bold cyan]{task.description}"),
