@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aerocfd"
-version = "1.0.0"
+version = "1.0.1"
 description = "Package CFD simulation folders into compressed .liufs archives with video-encoded cutplanes"
 readme = "aerocfd_cli/README.md"
 requires-python = ">=3.12"
