@@ -13,12 +13,12 @@ Protected long-lived branches:
 Working branch naming conventions:
 - `docs/<short-description>`
 - `bugfix/<short-description>`
-- `features/<short-description>`
+- `feature/<short-description>`
 
 Examples:
 - `docs/update-readme-installation`
 - `bugfix/fix-liufs-manifest-parse`
-- `features/add-sequence-playback-toggle`
+- `feature/add-sequence-playback-toggle`
 
 ## Where to branch from
 
