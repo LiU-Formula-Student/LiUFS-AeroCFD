@@ -297,3 +297,9 @@ Observed example:
 ## 👥 Authors
 
 LiU Formula Student – Gustav Johansson
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, branch strategy, and PR workflow.
