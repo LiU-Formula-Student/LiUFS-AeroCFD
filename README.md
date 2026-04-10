@@ -328,9 +328,3 @@ Observed example:
 ## 👥 Authors
 
 Gustav Johansson (LiU Formula Student) – [GitHub](https://github.com/GustavJ02)
-
----
-
-## 🤝 Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, branch strategy, and PR workflow.
