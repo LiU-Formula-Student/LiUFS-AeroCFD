@@ -296,7 +296,7 @@ Observed example:
 
 ## 👥 Authors
 
-LiU Formula Student – Gustav Johansson
+Gustav Johansson (LiU Formula Student) – [GitHub](https://github.com/GustavJ02)
 
 ---
 
