@@ -144,7 +144,7 @@ print(f"Created: {archive}")
 **Name:** `aerocfd`
 **Version:** `1.0b0.post7`
 **Python:** `>=3.12`
-**License:** MIT
+**License:** Apache-2.0
 **Default dependencies:** none
 
 **Optional extras:**
