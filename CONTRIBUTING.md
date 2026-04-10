@@ -104,6 +104,10 @@ Decision process:
 - Any maintainer or contributor may propose an addition in a PR
 - The PR should include a short rationale and links to representative contributions
 
+Author entry format in `README.md`:
+- `Full Name — [GitHub Profile](https://github.com/<username>)`
+- Keep one person per line for consistency
+
 ## Code of conduct
 
 Be respectful and constructive in discussions and reviews.
