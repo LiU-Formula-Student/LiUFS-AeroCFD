@@ -1,5 +1,6 @@
 from .reporting import NullReporter
 from . import FILE_MAPPING, CFDImage
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import os
 import shutil
@@ -11,6 +12,15 @@ import cv2
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
+
+
+def _resolve_workers(workers: int | None, task_count: int) -> int:
+    if task_count <= 0:
+        return 1
+    if workers is not None and workers > 0:
+        return min(workers, task_count)
+    cpu_count = os.cpu_count() or 1
+    return min(max(cpu_count, 1), task_count)
 
 
 def is_image_file(path: str | Path) -> bool:
@@ -40,41 +50,70 @@ def find_3d_images(data_dir):
     return images
 
 
-def convert_images_to_webp(image_paths, output_dir, quality=80, reporter=None):
+def _convert_single_image_to_webp(index: int, image_path: str, output_path: Path, quality: int):
+    source = Path(image_path)
+    if not source.exists() or not source.is_file():
+        return index, None, f"Skipping missing file: {source}"
+
+    target = output_path / f"{source.stem}.webp"
+    image = cv2.imread(str(source), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        return index, None, f"Skipping unreadable image: {source.name}"
+
+    success = cv2.imwrite(str(target), image, [cv2.IMWRITE_WEBP_QUALITY, int(quality)])
+    if not success:
+        return index, None, f"Failed to convert image: {source.name}"
+
+    return index, str(target), None
+
+
+def convert_images_to_webp(image_paths, output_dir, quality=80, workers=None, reporter=None):
     reporter = reporter or NullReporter()
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    created_files = []
+    worker_count = _resolve_workers(workers, len(image_paths))
+    created_with_index = []
 
     reporter.start_step(
-        f"Converting {len(image_paths)} images to WebP",
+        f"Converting {len(image_paths)} images to WebP (workers={worker_count})",
         image_count=len(image_paths),
         output_dir=str(output_path),
         quality=quality,
+        workers=worker_count,
     )
 
-    for image_path in image_paths:
-        source = Path(image_path)
-        reporter.advance_progress(1)
-        if not source.exists() or not source.is_file():
-            reporter.warn(f"Skipping missing file: {source}")
-            continue
+    if worker_count <= 1:
+        for index, image_path in enumerate(image_paths):
+            _, created_path, warning_message = _convert_single_image_to_webp(
+                index,
+                image_path,
+                output_path,
+                int(quality),
+            )
+            reporter.advance_progress(1)
+            if warning_message:
+                reporter.warn(warning_message)
+                continue
+            if created_path is not None:
+                created_with_index.append((index, created_path))
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_map = {
+                executor.submit(_convert_single_image_to_webp, index, image_path, output_path, int(quality)): index
+                for index, image_path in enumerate(image_paths)
+            }
 
-        reporter.advance(f"Converting {source.name} to WebP")
-        target = output_path / f"{source.stem}.webp"
+            for future in as_completed(future_map):
+                index, created_path, warning_message = future.result()
+                reporter.advance_progress(1)
+                if warning_message:
+                    reporter.warn(warning_message)
+                    continue
+                if created_path is not None:
+                    created_with_index.append((index, created_path))
 
-        image = cv2.imread(str(source), cv2.IMREAD_UNCHANGED)
-        if image is None:
-            reporter.warn(f"Skipping unreadable image: {source.name}")
-            continue
-
-        success = cv2.imwrite(str(target), image, [cv2.IMWRITE_WEBP_QUALITY, int(quality)])
-        if not success:
-            reporter.warn(f"Failed to convert image: {source.name}")
-            continue
-
-        created_files.append(str(target))
+    created_files = [file_path for _, file_path in sorted(created_with_index, key=lambda item: item[0])]
 
     reporter.finish_step(
         f"Finished WebP conversion in {output_path}",
@@ -97,37 +136,11 @@ def find_cfd_images(data_dir):
     return images
 
 
-def build_video_from_images(images, output_dir="videos", fps=12, extension="mp4", reporter=None):
-    reporter = reporter or NullReporter()
-    os.makedirs(output_dir, exist_ok=True)
+def _encode_plane_video(plane: str, plane_images, output_dir: str, fps: int, extension: str):
+    output_path = os.path.join(output_dir, f"{plane}.{extension}")
+    list_path: str | None = None
 
-    if shutil.which("ffmpeg") is None:
-        reporter.error("Could not create videos: ffmpeg is not installed or not available in PATH.")
-        return []
-
-    created_files = []
-    planes = sorted(set(img.plane for img in images))
-
-    reporter.start_step(
-        f"Encoding {len(planes)} plane videos",
-        plane_count=len(planes),
-        image_count=len(images),
-        output_dir=output_dir,
-    )
-
-    for plane in planes:
-        plane_images = sorted([img for img in images if img.plane == plane], key=lambda x: x.index)
-        if not plane_images:
-            continue
-
-        reporter.advance(
-            f"Building video for plane {plane} with {len(plane_images)} images",
-            plane=plane,
-            image_count=len(plane_images),
-        )
-
-        output_path = os.path.join(output_dir, f"{plane}.{extension}")
-
+    try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as list_file:
             list_path = list_file.name
             for image in plane_images:
@@ -152,20 +165,82 @@ def build_video_from_images(images, output_dir="videos", fps=12, extension="mp4"
             "format=yuv420p",
             output_path,
         ]
-
         result = subprocess.run(command, capture_output=True, text=True)
-        os.unlink(list_path)
-        reporter.advance_progress(len(plane_images))
+        return {
+            "plane": plane,
+            "output_path": output_path,
+            "image_count": len(plane_images),
+            "returncode": result.returncode,
+            "stderr": result.stderr.strip() if result.stderr else "",
+        }
+    finally:
+        if list_path is not None and os.path.exists(list_path):
+            os.unlink(list_path)
 
-        if result.returncode != 0:
-            reporter.error(
-                f"Skipping plane {plane}: ffmpeg failed",
-                plane=plane,
-                stderr=result.stderr.strip() if result.stderr else "",
-            )
+
+def build_video_from_images(images, output_dir="videos", fps=12, extension="mp4", workers=None, reporter=None):
+    reporter = reporter or NullReporter()
+    os.makedirs(output_dir, exist_ok=True)
+
+    if shutil.which("ffmpeg") is None:
+        reporter.error("Could not create videos: ffmpeg is not installed or not available in PATH.")
+        return []
+
+    planes = sorted(set(img.plane for img in images))
+    worker_count = _resolve_workers(workers, len(planes))
+    created_files = []
+
+    reporter.start_step(
+        f"Encoding {len(planes)} plane videos (workers={worker_count})",
+        plane_count=len(planes),
+        image_count=len(images),
+        workers=worker_count,
+        output_dir=output_dir,
+    )
+
+    plane_batches = {}
+    for plane in planes:
+        plane_images = sorted([img for img in images if img.plane == plane], key=lambda x: x.index)
+        if not plane_images:
             continue
+        plane_batches[plane] = plane_images
+        reporter.advance(
+            f"Building video for plane {plane} with {len(plane_images)} images",
+            plane=plane,
+            image_count=len(plane_images),
+        )
 
-        created_files.append(output_path)
+    if worker_count <= 1:
+        for plane, plane_images in plane_batches.items():
+            result = _encode_plane_video(plane, plane_images, output_dir, int(fps), extension)
+            reporter.advance_progress(result["image_count"])
+            if result["returncode"] != 0:
+                reporter.error(
+                    f"Skipping plane {plane}: ffmpeg failed",
+                    plane=plane,
+                    stderr=result["stderr"],
+                )
+                continue
+            created_files.append(result["output_path"])
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = [
+                executor.submit(_encode_plane_video, plane, plane_images, output_dir, int(fps), extension)
+                for plane, plane_images in plane_batches.items()
+            ]
+            for future in as_completed(futures):
+                result = future.result()
+                reporter.advance_progress(result["image_count"])
+                if result["returncode"] != 0:
+                    reporter.error(
+                        f"Skipping plane {result['plane']}: ffmpeg failed",
+                        plane=result["plane"],
+                        stderr=result["stderr"],
+                    )
+                    continue
+                created_files.append(result["output_path"])
+
+    created_files = sorted(created_files)
 
     reporter.finish_step(
         f"Finished encoding videos in {output_dir}",

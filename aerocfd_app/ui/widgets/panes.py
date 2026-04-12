@@ -21,24 +21,37 @@ class GUIReporter(BaseReporter):
 
     def emit(self, event: ProgressEvent) -> None:
         """Update via signal with progress information."""
-        if event.kind == "step_start":
-            message = event.data.get("message", "Processing...") if event.data else "Processing..."
+        if event.kind in {"step_start", "start_step"}:
+            message = event.message or "Processing..."
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
             self.progress_signal.emit(f"► {message}")
-        elif event.kind == "step_end":
-            message = event.data.get("message", "Step complete") if event.data else "Step complete"
+        elif event.kind in {"step_end", "finish_step"}:
+            message = event.message or "Step complete"
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
             self.progress_signal.emit(f"✓ {message}")
-        elif event.kind == "progress":
-            message = event.data.get("message", "") if event.data else ""
+        elif event.kind in {"progress", "advance", "progress_advance", "progress_total"}:
+            message = event.message or ""
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
+            if not message and event.kind == "progress_total":
+                message = event.message or "Processing..."
             if message:
                 self.progress_signal.emit(f"  {message}")
         elif event.kind == "log":
-            message = event.data.get("message", "") if event.data else ""
+            message = event.message or ""
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
             if message:
                 self.progress_signal.emit(message)
-        elif event.kind == "warning":
+        elif event.kind in {"warning", "warn", "error", "progress_complete"}:
             message = event.data.get("message", "") if event.data else ""
+            if not message:
+                message = event.message or ""
             if message:
-                self.progress_signal.emit(f"⚠ {message}")
+                prefix = "✓" if event.kind == "progress_complete" else "⚠"
+                self.progress_signal.emit(f"{prefix} {message}")
 
     def advance(self, message: str, **data: Any) -> None:
         """Emit an advance message."""

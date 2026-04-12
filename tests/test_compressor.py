@@ -19,7 +19,7 @@ from aerocfd_cli.encoder import (
     is_image_file,
 )
 from aerocfd_cli.packager import DuplicateRunError, append_run_to_liufs, build_liufs
-from aerocfd_cli.reporting import BaseReporter, ProgressEvent
+from aerocfd_cli.reporting import BaseReporter, LogLevel, ProgressEvent
 from aerocfd_cli.scanner import build_structure
 
 
@@ -163,6 +163,51 @@ def test_build_liufs_creates_manifest_and_counts_progress(tmp_path: Path, monkey
     assert run1["unknown"]["unknown_image_attempts"] == 1
 
 
+def test_build_liufs_shares_worker_budget_with_media_tasks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "source"
+    cfd_dir = source / "run1" / "cfd"
+    views_dir = source / "run1" / "views"
+
+    _write_file(cfd_dir / "X1X.png")
+    _write_file(cfd_dir / "Y1Y.png")
+    _write_file(cfd_dir / "Z1Z.png")
+    _write_file(views_dir / "top.png")
+
+    video_workers_seen: list[int | None] = []
+
+    def fake_build_video_from_images(images, output_dir, reporter=None, workers=None, **_kwargs):
+        video_workers_seen.append(workers)
+        output_path = Path(output_dir) / "XX.mp4"
+        output_path.write_text("video", encoding="utf-8")
+        if reporter is not None:
+            reporter.advance_progress(len(images))
+        return [str(output_path)]
+
+    def fake_convert_images_to_webp(image_paths, output_dir, reporter=None, workers=None, **_kwargs):
+        created_files = []
+        for image_path in image_paths:
+            output_path = Path(output_dir) / f"{Path(image_path).stem}.webp"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("webp", encoding="utf-8")
+            created_files.append(str(output_path))
+            if reporter is not None:
+                reporter.advance_progress(1)
+        return created_files
+
+    monkeypatch.setattr("aerocfd_cli.packager.build_video_from_images", fake_build_video_from_images)
+    monkeypatch.setattr("aerocfd_cli.packager.convert_images_to_webp", fake_convert_images_to_webp)
+
+    result = build_liufs(
+        source_dir=source,
+        output_file=tmp_path / "out.liufs",
+        workers=15,
+    )
+
+    assert result.exists()
+    assert video_workers_seen
+    assert video_workers_seen[0] == 3
+
+
 def test_append_run_to_liufs_adds_a_new_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base_source = tmp_path / "base"
     existing_run = base_source / "run_a"
@@ -253,4 +298,137 @@ def test_cli_can_append_to_existing_archive(tmp_path: Path, monkeypatch: pytest.
 
     assert exit_code == 0
     assert calls[0]["archive_file"] == archive_path
+    assert calls[0]["workers"] is None
+
+
+def test_cli_workers_are_forwarded_for_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    archive_path = tmp_path / "out.liufs"
+
+    calls: list[dict] = []
+
+    def fake_build_liufs(**kwargs):
+        calls.append(kwargs)
+        return archive_path
+
+    monkeypatch.setattr(cli, "build_liufs", fake_build_liufs)
+
+    exit_code = cli.main([str(source_dir), "--workers", "4"])
+
+    assert exit_code == 0
+    assert calls
+    assert calls[0]["workers"] == 4
+
+
+def test_cli_workers_are_forwarded_for_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    archive_path = tmp_path / "existing.liufs"
+    archive_path.write_bytes(b"placeholder")
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    calls: list[dict] = []
+
+    def fake_append_run_to_liufs(**kwargs):
+        calls.append(kwargs)
+        return archive_path
+
+    monkeypatch.setattr(cli, "append_run_to_liufs", fake_append_run_to_liufs)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: archive_path)
+
+    exit_code = cli.main([str(source_dir), "--append-to", str(archive_path), "--workers", "3"])
+
+    assert exit_code == 0
+    assert calls
+    assert calls[0]["workers"] == 3
+
+
+def test_cli_workers_must_be_positive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    exit_code = cli.main([str(source_dir), "--workers", "0"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "--workers must be greater than 0" in captured.err
+
+
+def test_cli_log_level_is_passed_to_reporter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    created_archive = tmp_path / "result.liufs"
+    reporter_kwargs: dict = {}
+
+    class FakeReporter:
+        def __init__(self, console, **kwargs):
+            reporter_kwargs.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RichReporter", FakeReporter)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: created_archive)
+
+    exit_code = cli.main([str(source_dir), "--log-level", "warning"])
+
+    assert exit_code == 0
+    assert reporter_kwargs["loglevel"] == LogLevel.WARNING
+    assert reporter_kwargs["show_logs"] is True
+    assert reporter_kwargs["show_progress"] is True
+
+
+def test_cli_progress_only_disables_logs_but_keeps_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    created_archive = tmp_path / "result.liufs"
+    reporter_kwargs: dict = {}
+
+    class FakeReporter:
+        def __init__(self, console, **kwargs):
+            reporter_kwargs.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RichReporter", FakeReporter)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: created_archive)
+
+    exit_code = cli.main([str(source_dir), "--progress-only"])
+
+    assert exit_code == 0
+    assert reporter_kwargs["show_logs"] is False
+    assert reporter_kwargs["show_progress"] is True
+
+
+def test_cli_quiet_suppresses_validation_output(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = cli.main(["/tmp/does-not-exist", "--quiet"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_cli_quiet_disables_all_reporter_output_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    created_archive = tmp_path / "result.liufs"
+    reporter_kwargs: dict = {}
+
+    class FakeReporter:
+        def __init__(self, console, **kwargs):
+            reporter_kwargs.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RichReporter", FakeReporter)
+    monkeypatch.setattr(cli, "build_liufs", lambda **_kwargs: created_archive)
+
+    exit_code = cli.main([str(source_dir), "--quiet"])
+
+    assert exit_code == 0
+    assert reporter_kwargs["show_logs"] is False
+    assert reporter_kwargs["show_progress"] is False
 
