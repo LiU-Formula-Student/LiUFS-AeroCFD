@@ -32,6 +32,25 @@ from ..core.diagnostics import collect_diagnostics
 
 class ViewerWindow(QMainWindow):
     """Main viewer window for .liufs files."""
+
+    @staticmethod
+    def _project_root() -> Path:
+        return Path(__file__).resolve().parents[2]
+
+    def _read_project_text_file(self, filename: str) -> str:
+        candidates = [
+            self._project_root() / filename,
+            Path.cwd() / filename,
+            Path(__file__).resolve().parent / filename,
+        ]
+
+        for candidate in candidates:
+            try:
+                if candidate.is_file():
+                    return candidate.read_text(encoding="utf-8")
+            except Exception:
+                continue
+        return ""
     
     def __init__(self):
         """Initialize the main window."""
@@ -85,9 +104,15 @@ class ViewerWindow(QMainWindow):
             except Exception:
                 sim_name = "Unknown"
 
+        copyright_text = self._read_project_text_file("COPYRIGHT").strip()
+        if not copyright_text:
+            copyright_text = "Copyright (C) 2026 LiU Formula Student"
+
         info_text = (
             f"Application: LiU FS Simulation Viewer\n"
             f"Version: {APP_VERSION}\n"
+            f"License: GPL-3.0-only\n"
+            f"{copyright_text}\n"
             f"Current Simulation: {sim_name}\n"
             f"Python: {platform.python_version()}\n"
             f"Qt: {qVersion()}\n"
@@ -95,6 +120,42 @@ class ViewerWindow(QMainWindow):
         )
 
         QMessageBox.information(self, "Application Info", info_text)
+
+    def show_license_dialog(self):
+        """Show license and copyright information."""
+        license_text = self._read_project_text_file("LICENSE").strip()
+        copyright_text = self._read_project_text_file("COPYRIGHT").strip()
+
+        if not copyright_text:
+            copyright_text = "Copyright (C) 2026 LiU Formula Student"
+
+        if not license_text:
+            license_text = (
+                "License text is not available in this runtime environment.\n"
+                "This application is licensed under GNU GPL v3.0 only (GPL-3.0-only)."
+            )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("License")
+        dialog.setGeometry(120, 120, 900, 700)
+
+        layout = QVBoxLayout(dialog)
+
+        header = QLabel(f"{copyright_text}\nLicense: GPL-3.0-only")
+        header.setWordWrap(True)
+        layout.addWidget(header)
+
+        license_box = QPlainTextEdit()
+        license_box.setReadOnly(True)
+        license_box.setPlainText(license_text)
+        layout.addWidget(license_box)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        dialog.exec()
     
     def show_help_dialog(self):
         """Show in-app help dialog with shortcuts and usage guide."""

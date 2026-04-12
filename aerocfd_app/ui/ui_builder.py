@@ -226,6 +226,11 @@ class UIBuilder:
         report_issue_action.triggered.connect(self.window.show_report_issue_dialog)
         
         help_menu.addSeparator()
+
+        license_action = help_menu.addAction("&License")
+        license_action.triggered.connect(self.window.show_license_dialog)
+
+        help_menu.addSeparator()
         
         info_action = help_menu.addAction("&About")
         info_action.triggered.connect(self.window.show_app_info)
