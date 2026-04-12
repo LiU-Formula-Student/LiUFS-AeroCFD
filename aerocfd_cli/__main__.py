@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 from rich.console import Console
 
-from .reporting import RichReporter
+from .reporting import LogLevel, RichReporter
 from .packager import DuplicateRunError, append_run_to_liufs, build_liufs
 
 
@@ -49,9 +49,32 @@ def create_parser() -> argparse.ArgumentParser:
         help="WebP quality for 3d view image compression (0-100). Default: 80.",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of worker threads for WebP and per-plane video processing. Default: auto.",
+    )
+    parser.add_argument(
         "--include-unknown",
         action="store_true",
         help="Copy files from directories with unknown type into the archive.",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=("info", "warning", "error"),
+        default="info",
+        help="Minimum log level to print for event logs. Default: info.",
+    )
+    output_mode = parser.add_mutually_exclusive_group()
+    output_mode.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Disable all terminal output, including progress and errors.",
+    )
+    output_mode.add_argument(
+        "--progress-only",
+        action="store_true",
+        help="Show only progress/ETA bar and suppress event log lines.",
     )
     return parser
 
@@ -60,30 +83,53 @@ def main(argv: list[str] | None = None) -> int:
     parser = create_parser()
     args = parser.parse_args(argv)
 
+    def fail_validation(message: str) -> int:
+        if not args.quiet:
+            print(f"aerocfd: error: {message}", file=sys.stderr)
+        return 2
+
     source = Path(args.source).expanduser()
     output = Path(args.output).expanduser() if args.output else None
     append_to = Path(args.append_to).expanduser() if args.append_to else None
 
     if append_to and not append_to.exists():
-        parser.error(f"Target archive does not exist: {append_to}")
+        return fail_validation(f"Target archive does not exist: {append_to}")
 
 
     if not source.exists():
-        parser.error(f"Source path does not exist: {source}")
+        return fail_validation(f"Source path does not exist: {source}")
 
     if not source.is_dir():
-        parser.error(f"Source path is not a directory: {source}")
+        return fail_validation(f"Source path is not a directory: {source}")
 
     if args.fps <= 0:
-        parser.error("--fps must be greater than 0")
+        return fail_validation("--fps must be greater than 0")
 
     if args.webp_quality < 0 or args.webp_quality > 100:
-        parser.error("--webp-quality must be between 0 and 100")
+        return fail_validation("--webp-quality must be between 0 and 100")
+
+    if args.workers is not None and args.workers <= 0:
+        return fail_validation("--workers must be greater than 0")
 
     reporter = None
+    if args.log_level == "warning":
+        loglevel = LogLevel.WARNING
+    elif args.log_level == "error":
+        loglevel = LogLevel.ERROR
+    else:
+        loglevel = LogLevel.INFO
+
+    show_logs = not args.progress_only and not args.quiet
+    show_progress = not args.quiet
+
     try:
-        console = Console()
-        reporter = RichReporter(console)
+        console = Console(quiet=args.quiet)
+        reporter = RichReporter(
+            console,
+            loglevel=loglevel,
+            show_logs=show_logs,
+            show_progress=show_progress,
+        )
         if append_to:
             result = append_run_to_liufs(
                 source_dir=source,
@@ -93,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 extension=args.extension,
                 webp_quality=args.webp_quality,
+                workers=args.workers,
                 include_unknown=args.include_unknown,
                 reporter=reporter,
             )
@@ -103,21 +150,25 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 extension=args.extension,
                 webp_quality=args.webp_quality,
+                workers=args.workers,
                 include_unknown=args.include_unknown,
                 reporter=reporter,
             )
     except DuplicateRunError as exc:
-        print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
+        if not args.quiet:
+            print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:
         action = "extend" if append_to else "build"
-        print(f"Failed to {action} .liufs archive: {exc}", file=sys.stderr)
+        if not args.quiet:
+            print(f"Failed to {action} .liufs archive: {exc}", file=sys.stderr)
         return 1
     finally:
         if reporter is not None:
             reporter.close()
 
-    print(f"Created archive: {result}")
+    if not args.quiet:
+        print(f"Created archive: {result}")
     return 0
 
 

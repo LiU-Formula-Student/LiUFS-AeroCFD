@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from threading import RLock
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -66,7 +67,14 @@ class NullReporter(BaseReporter):
 
 
 class RichReporter(BaseReporter):
-    def __init__(self, console: Console | None = None, loglevel: LogLevel = LogLevel.INFO) -> None:
+    def __init__(
+        self,
+        console: Console | None = None,
+        loglevel: LogLevel = LogLevel.INFO,
+        *,
+        show_logs: bool = True,
+        show_progress: bool = True,
+    ) -> None:
         if console is None:
             try:
                 from rich.console import Console as RichConsole
@@ -78,88 +86,94 @@ class RichReporter(BaseReporter):
         else:
             self.console = console
         self.loglevel = loglevel
+        self.show_logs = show_logs
+        self.show_progress = show_progress
+        self._lock = RLock()
         self._progress: Progress | None = None
         self._task_id: int | None = None
         self._task_total = 0
         self._completed_attempts = 0
 
     def _ensure_progress(self) -> Progress:
-        if self._progress is None:
-            from rich.progress import (
-                BarColumn,
-                Progress,
-                SpinnerColumn,
-                TaskProgressColumn,
-                TextColumn,
-                TimeRemainingColumn,
-            )
-            self._progress = Progress(
-                SpinnerColumn(),
-                TextColumn("[bold cyan]{task.description}"),
-                BarColumn(bar_width=None),
-                TaskProgressColumn(),
-                TimeRemainingColumn(),
-                console=self.console,
-                transient=False,
-            )
-            self._progress.start()
-        return self._progress
+        with self._lock:
+            if self._progress is None:
+                from rich.progress import (
+                    BarColumn,
+                    Progress,
+                    SpinnerColumn,
+                    TaskProgressColumn,
+                    TextColumn,
+                    TimeRemainingColumn,
+                )
+                self._progress = Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold cyan]{task.description}"),
+                    BarColumn(bar_width=None),
+                    TaskProgressColumn(),
+                    TimeRemainingColumn(),
+                    console=self.console,
+                    transient=False,
+                )
+                self._progress.start()
+            return self._progress
 
     def close(self) -> None:
-        if self._progress is not None:
-            self._progress.stop()
-            self._progress = None
-            self._task_id = None
-            self._task_total = 0
+        with self._lock:
+            if self._progress is not None:
+                self._progress.stop()
+                self._progress = None
+                self._task_id = None
+                self._task_total = 0
 
     def emit(self, event: ProgressEvent) -> None:
-        if event.kind == "log" and self.loglevel.value <= LogLevel.INFO.value:
-            self.console.log(event.message)
-        elif event.kind == "warn" and self.loglevel.value <= LogLevel.WARNING.value:
-            self.console.log(f"[bold yellow]{event.message}[/]")
-        elif event.kind == "error" and self.loglevel.value <= LogLevel.ERROR.value:
-            self.console.log(f"[bold red]{event.message}[/]")
-        elif event.kind == "start_step":
-            self.console.log(f"[bold dark_orange]{event.message}[/]")
-        elif event.kind == "finish_step":
-            self.console.log(f"[bold green]{event.message}[/]")
-        elif event.kind == "advance":
-            self.console.log(event.message)
-        elif event.kind == "progress_total":
-            data = event.data or {}
-            total = max(0, int(data.get("total", 0)))
-            description = str(data.get("description") or event.message or "Processing images")
-            self._completed_attempts = 0
-            self._task_total = total
-
-            if total > 0:
-                progress = self._ensure_progress()
-                if self._task_id is None:
-                    self._task_id = progress.add_task(description, total=total, completed=0)
-                else:
-                    progress.update(self._task_id, description=description, total=total, completed=0)
-            else:
-                if self._progress is not None:
-                    self._progress.stop()
-                    self._progress = None
-                self._task_id = None
-            if total == 0 and self.loglevel.value <= LogLevel.INFO.value:
-                self.console.log("No image files found to process.")
-        elif event.kind == "progress_advance":
-            if self._progress is None or self._task_id is None:
-                return
-            data = event.data or {}
-            amount = max(0, int(data.get("amount", 1)))
-            self._completed_attempts += amount
-            next_completed = min(self._completed_attempts, max(self._task_total, 1))
-            self._progress.update(self._task_id, completed=next_completed)
-            if event.message and self.loglevel.value <= LogLevel.INFO.value:
+        with self._lock:
+            if event.kind == "log" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
                 self.console.log(event.message)
-        elif event.kind == "progress_complete":
-            if self._progress is not None and self._task_id is not None:
-                self._progress.update(self._task_id, completed=max(self._task_total, 1))
-                self._progress.refresh()
-            if event.message and self.loglevel.value <= LogLevel.INFO.value:
+            elif event.kind == "warn" and self.show_logs and self.loglevel.value <= LogLevel.WARNING.value:
+                self.console.log(f"[bold yellow]{event.message}[/]")
+            elif event.kind == "error" and self.show_logs and self.loglevel.value <= LogLevel.ERROR.value:
+                self.console.log(f"[bold red]{event.message}[/]")
+            elif event.kind == "start_step" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
+                self.console.log(f"[bold dark_orange]{event.message}[/]")
+            elif event.kind == "finish_step" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
                 self.console.log(f"[bold green]{event.message}[/]")
-        else:
-            self.console.log(event.message)
+            elif event.kind == "advance" and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
+                self.console.log(event.message)
+            elif event.kind == "progress_total":
+                data = event.data or {}
+                total = max(0, int(data.get("total", 0)))
+                description = str(data.get("description") or event.message or "Processing images")
+                self._completed_attempts = 0
+                self._task_total = total
+
+                if total > 0 and self.show_progress:
+                    progress = self._ensure_progress()
+                    if self._task_id is None:
+                        self._task_id = progress.add_task(description, total=total, completed=0)
+                    else:
+                        progress.update(self._task_id, description=description, total=total, completed=0)
+                else:
+                    if self._progress is not None:
+                        self._progress.stop()
+                        self._progress = None
+                    self._task_id = None
+                if total == 0 and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
+                    self.console.log("No image files found to process.")
+            elif event.kind == "progress_advance":
+                if self._progress is None or self._task_id is None:
+                    return
+                data = event.data or {}
+                amount = max(0, int(data.get("amount", 1)))
+                self._completed_attempts += amount
+                next_completed = min(self._completed_attempts, max(self._task_total, 1))
+                self._progress.update(self._task_id, completed=next_completed)
+                if event.message and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
+                    self.console.log(event.message)
+            elif event.kind == "progress_complete":
+                if self._progress is not None and self._task_id is not None:
+                    self._progress.update(self._task_id, completed=max(self._task_total, 1))
+                    self._progress.refresh()
+                if event.message and self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
+                    self.console.log(f"[bold green]{event.message}[/]")
+            elif self.show_logs and self.loglevel.value <= LogLevel.INFO.value:
+                self.console.log(event.message)

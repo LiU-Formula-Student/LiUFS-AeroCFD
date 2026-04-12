@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import os
 import shutil
 import tempfile
 import zipfile
@@ -127,6 +129,15 @@ def _count_total_images(structure_node: dict, *, include_unknown: bool) -> int:
     return total
 
 
+def _resolve_workers(workers: int | None, task_count: int) -> int:
+    if task_count <= 0:
+        return 1
+    if workers is not None and workers > 0:
+        return min(workers, task_count)
+    cpu_count = os.cpu_count() or 1
+    return min(max(cpu_count, 1), task_count)
+
+
 def _process_leaf(
     leaf_info: dict,
     package_root: Path,
@@ -135,6 +146,7 @@ def _process_leaf(
     fps: int,
     extension: str,
     webp_quality: int,
+    workers: int | None,
     include_unknown: bool,
     reporter: BaseReporter,
 ) -> None:
@@ -154,6 +166,7 @@ def _process_leaf(
             output_dir=str(package_root),
             fps=fps,
             extension=extension,
+            workers=workers,
             reporter=reporter,
         )
 
@@ -173,6 +186,7 @@ def _process_leaf(
             image_paths,
             output_dir=str(package_root),
             quality=webp_quality,
+            workers=workers,
             reporter=reporter,
         )
         manifest_node["files"] = [
@@ -202,37 +216,69 @@ def _build_manifest_tree(
     fps: int,
     extension: str,
     webp_quality: int,
+    workers: int | None,
     include_unknown: bool,
     reporter: BaseReporter,
 ) -> None:
-    if _is_leaf(structure_node):
-        _process_leaf(
-            structure_node,
-            package_root,
-            manifest_node,
-            fps=fps,
-            extension=extension,
-            webp_quality=webp_quality,
-            include_unknown=include_unknown,
-            reporter=reporter,
-        )
+    leaf_jobs: list[tuple[dict, Path, dict]] = []
+
+    def collect(node: dict, node_manifest: dict, node_root: Path) -> None:
+        if _is_leaf(node):
+            leaf_jobs.append((node, node_root, node_manifest))
+            return
+
+        node_manifest["children"] = {}
+        for child_name, child_node in sorted(node.items()):
+            child_manifest: dict = {}
+            node_manifest["children"][child_name] = child_manifest
+            collect(child_node, child_manifest, node_root / child_name)
+
+    collect(structure_node, manifest_node, package_root)
+
+    package_workers = _resolve_workers(workers, len(leaf_jobs))
+    effective_workers = workers if workers is not None and workers > 0 else (os.cpu_count() or 1)
+    media_workers = max(1, min(3, effective_workers // max(package_workers, 1)))
+
+    if package_workers <= 1:
+        for leaf_info, leaf_root, leaf_manifest in leaf_jobs:
+            _process_leaf(
+                leaf_info,
+                leaf_root,
+                leaf_manifest,
+                fps=fps,
+                extension=extension,
+                webp_quality=webp_quality,
+                workers=media_workers,
+                include_unknown=include_unknown,
+                reporter=reporter,
+            )
         return
 
-    manifest_node["children"] = {}
+    reporter.advance(
+        f"Processing {len(leaf_jobs)} leaf directories in parallel with {package_workers} workers",
+        leaf_count=len(leaf_jobs),
+        worker_count=package_workers,
+    )
 
-    for child_name, child_node in sorted(structure_node.items()):
-        child_manifest: dict = {}
-        manifest_node["children"][child_name] = child_manifest
-        _build_manifest_tree(
-            child_node,
-            child_manifest,
-            package_root / child_name,
-            fps=fps,
-            extension=extension,
-            webp_quality=webp_quality,
-            include_unknown=include_unknown,
-            reporter=reporter
-        )
+    with ThreadPoolExecutor(max_workers=package_workers) as executor:
+        futures = [
+            executor.submit(
+                _process_leaf,
+                leaf_info,
+                leaf_root,
+                leaf_manifest,
+                fps=fps,
+                extension=extension,
+                webp_quality=webp_quality,
+                workers=media_workers,
+                include_unknown=include_unknown,
+                reporter=reporter,
+            )
+            for leaf_info, leaf_root, leaf_manifest in leaf_jobs
+        ]
+
+        for future in as_completed(futures):
+            future.result()
 
 
 def _write_manifest(package_root: Path, manifest: dict) -> None:
@@ -257,6 +303,7 @@ def build_liufs(
     fps: int = 12,
     extension: str = "mp4",
     webp_quality: int = 80,
+    workers: int | None = None,
     include_unknown: bool = False,
     reporter: BaseReporter | None = None,
 ) -> Path:
@@ -290,6 +337,7 @@ def build_liufs(
                 "fps": fps,
                 "video_extension": extension,
                 "webp_quality": webp_quality,
+                "workers": workers,
                 "include_unknown": include_unknown,
             },
             "runs": {},
@@ -305,6 +353,7 @@ def build_liufs(
             fps=fps,
             extension=extension,
             webp_quality=webp_quality,
+            workers=workers,
             include_unknown=include_unknown,
             reporter=reporter
         )
@@ -329,6 +378,7 @@ def append_run_to_liufs(
     fps: int = 12,
     extension: str = "mp4",
     webp_quality: int = 80,
+    workers: int | None = None,
     include_unknown: bool = False,
     reporter: BaseReporter | None = None,
 ) -> Path:
@@ -389,6 +439,7 @@ def append_run_to_liufs(
             fps=fps,
             extension=extension,
             webp_quality=webp_quality,
+            workers=workers,
             include_unknown=include_unknown,
             reporter=reporter,
         )
