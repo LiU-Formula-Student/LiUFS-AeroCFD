@@ -86,6 +86,17 @@ def replace_or_fail(path: Path, pattern: str, replacement: str) -> None:
     path.write_text(updated, encoding="utf-8")
 
 
+def update_release_artifact_references(text: str, package_version: str) -> str:
+    wheel_pattern = f"aerocfd-{package_version}-py3-none-any.whl"
+    sdist_pattern = f"aerocfd-{package_version}.tar.gz"
+
+    text = re.sub(r"aerocfd-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
+    text = re.sub(r"aerocfd_cli-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
+    text = re.sub(r"aerocfd-[0-9A-Za-z.+-]+\.tar\.gz", sdist_pattern, text)
+    text = re.sub(r"aerocfd_cli-[0-9A-Za-z.+-]+\.tar\.gz", sdist_pattern, text)
+    return text
+
+
 def main() -> int:
     raw_version = sys.argv[1] if len(sys.argv) > 1 else "dev"
     app_version = sanitize(raw_version)
@@ -116,7 +127,6 @@ def main() -> int:
         f'    "{development_status}",',
     )
 
-    wheel_pattern = f"aerocfd-{package_version}-py3-none-any.whl"
     for relative_path in [
         "README.md",
         "aerocfd_cli/README.md",
@@ -124,8 +134,7 @@ def main() -> int:
     ]:
         path = root / relative_path
         text = path.read_text(encoding="utf-8")
-        text = re.sub(r"aerocfd-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
-        text = re.sub(r"aerocfd_cli-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
+        text = update_release_artifact_references(text, package_version)
         if relative_path == "docs/PACKAGING.md":
             text = re.sub(
                 r'(\*\*Version:\*\*\s*`)[^`]+(`)',
