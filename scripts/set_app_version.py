@@ -7,6 +7,7 @@ This script updates:
 - pyproject.toml ([project].version)
 - pyproject.toml (Development Status classifier)
 - README examples that reference wheel filenames
+- docs/PACKAGING.md package version references
 """
 
 from __future__ import annotations
@@ -125,6 +126,13 @@ def main() -> int:
         text = path.read_text(encoding="utf-8")
         text = re.sub(r"aerocfd-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
         text = re.sub(r"aerocfd_cli-[0-9A-Za-z.+-]+-py3-none-any\.whl", wheel_pattern, text)
+        if relative_path == "docs/PACKAGING.md":
+            text = re.sub(
+                r'(\*\*Version:\*\*\s*`)[^`]+(`)',
+                rf'\1{package_version}\2',
+                text,
+                count=1,
+            )
         path.write_text(text, encoding="utf-8")
 
     print(f"Set app display version to: {app_version}")
