@@ -21,24 +21,29 @@ class GUIReporter(BaseReporter):
 
     def emit(self, event: ProgressEvent) -> None:
         """Update via signal with progress information."""
-        if event.kind == "step_start":
+        if event.kind in {"step_start", "start_step"}:
             message = event.data.get("message", "Processing...") if event.data else "Processing..."
             self.progress_signal.emit(f"► {message}")
-        elif event.kind == "step_end":
+        elif event.kind in {"step_end", "finish_step"}:
             message = event.data.get("message", "Step complete") if event.data else "Step complete"
             self.progress_signal.emit(f"✓ {message}")
-        elif event.kind == "progress":
+        elif event.kind in {"progress", "advance", "progress_advance", "progress_total"}:
             message = event.data.get("message", "") if event.data else ""
+            if not message and event.kind == "progress_total":
+                message = event.message or "Processing..."
             if message:
                 self.progress_signal.emit(f"  {message}")
         elif event.kind == "log":
             message = event.data.get("message", "") if event.data else ""
             if message:
                 self.progress_signal.emit(message)
-        elif event.kind == "warning":
+        elif event.kind in {"warning", "warn", "error", "progress_complete"}:
             message = event.data.get("message", "") if event.data else ""
+            if not message:
+                message = event.message or ""
             if message:
-                self.progress_signal.emit(f"⚠ {message}")
+                prefix = "✓" if event.kind == "progress_complete" else "⚠"
+                self.progress_signal.emit(f"{prefix} {message}")
 
     def advance(self, message: str, **data: Any) -> None:
         """Emit an advance message."""
