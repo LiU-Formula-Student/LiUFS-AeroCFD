@@ -16,9 +16,7 @@ def test_error_handling():
     """Test error handling with broken .liufs files."""
     test_dir = Path(__file__).resolve().parent / "broken_liufs_files"
     
-    if not test_dir.exists():
-        print(f"❌ Test directory not found: {test_dir}")
-        return False
+    assert test_dir.exists(), f"Test directory not found: {test_dir}"
     
     test_files = {
         "empty.liufs": "Empty ZIP (no manifest)",
@@ -109,7 +107,7 @@ def test_error_handling():
     
     print(f"\nTotal: {passed} passed, {failed} failed, {skipped} skipped")
     
-    return failed == 0
+    assert failed == 0, f"Test failed: {failed} error(s)"
 
 
 if __name__ == "__main__":
