@@ -22,19 +22,27 @@ class GUIReporter(BaseReporter):
     def emit(self, event: ProgressEvent) -> None:
         """Update via signal with progress information."""
         if event.kind in {"step_start", "start_step"}:
-            message = event.data.get("message", "Processing...") if event.data else "Processing..."
+            message = event.message or "Processing..."
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
             self.progress_signal.emit(f"► {message}")
         elif event.kind in {"step_end", "finish_step"}:
-            message = event.data.get("message", "Step complete") if event.data else "Step complete"
+            message = event.message or "Step complete"
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
             self.progress_signal.emit(f"✓ {message}")
         elif event.kind in {"progress", "advance", "progress_advance", "progress_total"}:
-            message = event.data.get("message", "") if event.data else ""
+            message = event.message or ""
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
             if not message and event.kind == "progress_total":
                 message = event.message or "Processing..."
             if message:
                 self.progress_signal.emit(f"  {message}")
         elif event.kind == "log":
-            message = event.data.get("message", "") if event.data else ""
+            message = event.message or ""
+            if event.data and event.data.get("message"):
+                message = event.data["message"]
             if message:
                 self.progress_signal.emit(message)
         elif event.kind in {"warning", "warn", "error", "progress_complete"}:
