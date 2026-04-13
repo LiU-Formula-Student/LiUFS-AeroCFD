@@ -38,7 +38,16 @@ jobs:
             if [ -n "${{ github.event.inputs.build_ref }}" ]; then
               build_ref="${{ github.event.inputs.build_ref }}"
             else
-              build_ref="${{ github.sha }}"
+              tag_commit=$(git ls-remote --refs origin "refs/tags/$release_tag^{}" | awk '{print $1}')
+              if [ -z "$tag_commit" ]; then
+                tag_commit=$(git ls-remote --refs origin "refs/tags/$release_tag" | awk '{print $1}')
+              fi
+
+              if [ -n "$tag_commit" ]; then
+                build_ref="$tag_commit"
+              else
+                build_ref="${{ github.sha }}"
+              fi
             fi
           else
             release_tag=$(printf '%s' "${{ github.event.pull_request.title }}" | sed -n 's/^chore(release): stamp version //p')
