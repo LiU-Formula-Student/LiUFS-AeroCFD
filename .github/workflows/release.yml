@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     outputs:
       build_ref: ${{ steps.set-ref.outputs.build_ref }}
 
@@ -29,8 +30,8 @@ jobs:
         run: |
           python scripts/set_app_version.py "${{ github.event.release.tag_name || github.ref_name }}"
 
-      - name: Commit and push stamped version
-        id: commit-version
+      - name: Prepare stamped release branch
+        id: prepare-branch
         if: github.event_name == 'release'
         run: |
           if git diff --quiet; then
@@ -41,16 +42,77 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          stamp_branch="release/stamp-${{ github.event.release.tag_name }}-${{ github.run_id }}"
+
+          git checkout -b "$stamp_branch"
           git add aerocfd_app/version.py aerocfd_app/__init__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
           git commit -m "chore(release): stamp version ${{ github.event.release.tag_name }}"
-          git push origin "HEAD:${{ github.event.release.target_commitish }}"
+          git push origin "HEAD:$stamp_branch"
 
           echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$stamp_branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open release stamping PR
+        id: open-pr
+        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_branch="${{ github.event.release.target_commitish || 'main' }}"
+
+          pr_url=$(gh pr create \
+            --base "$target_branch" \
+            --head "${{ steps.prepare-branch.outputs.branch_name }}" \
+            --title "chore(release): stamp version ${{ github.event.release.tag_name }}" \
+            --body "Automated version stamping for release ${{ github.event.release.tag_name }}.")
+
+          pr_number=$(gh pr view "$pr_url" --json number --jq '.number')
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Enable PR auto-merge (merge queue compatible)
+        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr merge "${{ steps.open-pr.outputs.pr_number }}" --auto --merge
+
+      - name: Wait for release stamping PR merge
+        id: wait-merge
+        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_number="${{ steps.open-pr.outputs.pr_number }}"
+
+          for _ in $(seq 1 90); do
+            merged_at=$(gh pr view "$pr_number" --json mergedAt --jq '.mergedAt')
+            if [ "$merged_at" != "null" ] && [ -n "$merged_at" ]; then
+              merge_commit=$(gh pr view "$pr_number" --json mergeCommit --jq '.mergeCommit.oid')
+              echo "merge_commit=$merge_commit" >> "$GITHUB_OUTPUT"
+              echo "Release stamping PR merged at $merged_at"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Timed out waiting for PR #$pr_number to merge." >&2
+          exit 1
+
+      - name: Retarget release tag to merged commit
+        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
+        run: |
+          git fetch --tags
+          git tag -f "${{ github.event.release.tag_name }}" "${{ steps.wait-merge.outputs.merge_commit }}"
+          git push origin "refs/tags/${{ github.event.release.tag_name }}" --force
 
       - name: Set build ref output
         id: set-ref
         run: |
-          echo "build_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "release" ] && [ "${{ steps.prepare-branch.outputs.changed }}" = "true" ]; then
+            echo "build_ref=${{ steps.wait-merge.outputs.merge_commit }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     needs: prepare-version
