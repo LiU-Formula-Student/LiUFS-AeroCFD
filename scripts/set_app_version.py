@@ -150,7 +150,7 @@ def main() -> int:
         if relative_path == "docs/PACKAGING.md":
             text = re.sub(
                 r'(\*\*Version:\*\*\s*`)[^`]+(`)',
-                rf'\1{package_version}\2',
+                rf'\g<1>{package_version}\g<2>',
                 text,
                 count=1,
             )
