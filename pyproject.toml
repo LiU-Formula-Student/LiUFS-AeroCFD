@@ -63,6 +63,9 @@ Issues = "https://github.com/LiU-Formula-Student/LiUFS-AeroCFD/issues"
 [tool.setuptools.packages.find]
 include = ["aerocfd_cli*", "aerocfd_app*"]
 
+[tool.setuptools.package-data]
+aerocfd_app = ["resources/*"]
+
 [tool.black]
 line-length = 100
 target-version = ["py312"]
