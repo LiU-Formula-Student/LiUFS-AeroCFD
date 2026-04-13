@@ -1,12 +1,66 @@
 from __future__ import annotations
 
 import argparse
+import importlib.resources as resources
 from pathlib import Path
 import sys
-from rich.console import Console
 
 from .reporting import LogLevel, RichReporter
-from .packager import DuplicateRunError, append_run_to_liufs, build_liufs
+
+
+LEGAL_RESOURCE_PACKAGE = "aerocfd_app.resources"
+DEFAULT_COPYRIGHT = "Copyright (C) 2026 LiU Formula Student"
+DEFAULT_LICENSE_SUMMARY = "GNU General Public License v3.0 only (GPL-3.0-only)"
+
+
+build_liufs = None
+append_run_to_liufs = None
+
+
+def _ensure_packager_callable_loaded(append_mode: bool) -> None:
+    global build_liufs, append_run_to_liufs
+
+    if append_mode:
+        if append_run_to_liufs is None:
+            from .packager import append_run_to_liufs as _append_run_to_liufs
+
+            append_run_to_liufs = _append_run_to_liufs
+        return
+
+    if build_liufs is None:
+        from .packager import build_liufs as _build_liufs
+
+        build_liufs = _build_liufs
+
+
+def _read_legal_resource_text(filename: str) -> str:
+    try:
+        resource_path = resources.files(LEGAL_RESOURCE_PACKAGE) / filename
+        if resource_path.is_file():
+            return resource_path.read_text(encoding="utf-8")
+    except Exception:
+        pass
+    return ""
+
+
+def _print_requested_legal_information(args: argparse.Namespace) -> bool:
+    if not (args.license or args.license_full or args.copyright):
+        return False
+
+    if args.copyright:
+        copyright_text = _read_legal_resource_text("COPYRIGHT").strip() or DEFAULT_COPYRIGHT
+        print(copyright_text)
+
+    if args.license_full:
+        license_text = _read_legal_resource_text("LICENSE").strip()
+        if not license_text:
+            license_text = f"This application is licensed under {DEFAULT_LICENSE_SUMMARY}."
+        print(license_text)
+    elif args.license:
+        print(f"License: {DEFAULT_LICENSE_SUMMARY}")
+        print("Use --license-full to show the full text.")
+
+    return True
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -16,7 +70,8 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "source",
-        help="Path to the simulation directory to package.",
+        nargs="?",
+        help="Path to the simulation directory to package. Not required with --license, --license-full, or --copyright.",
     )
     parser.add_argument(
         "-o",
@@ -65,6 +120,28 @@ def create_parser() -> argparse.ArgumentParser:
         default="info",
         help="Minimum log level to print for event logs. Default: info.",
     )
+    legal_output = parser.add_mutually_exclusive_group()
+    legal_output.add_argument(
+        "--license",
+        action="store_true",
+        help="Print a short license notice and exit.",
+    )
+    legal_output.add_argument(
+        "--license-full",
+        action="store_true",
+        help="Print full license text and exit.",
+    )
+    parser.add_argument(
+        "--copyright",
+        action="store_true",
+        help="Print copyright information and exit.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="aerocfd 1.0b0.post7",
+        help="Show the version number and exit.",
+    )
     output_mode = parser.add_mutually_exclusive_group()
     output_mode.add_argument(
         "--quiet",
@@ -83,10 +160,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = create_parser()
     args = parser.parse_args(argv)
 
+    if _print_requested_legal_information(args):
+        return 0
+
     def fail_validation(message: str) -> int:
         if not args.quiet:
             print(f"aerocfd: error: {message}", file=sys.stderr)
         return 2
+
+    if args.source is None:
+        return fail_validation("the following arguments are required: source")
 
     source = Path(args.source).expanduser()
     output = Path(args.output).expanduser() if args.output else None
@@ -121,8 +204,10 @@ def main(argv: list[str] | None = None) -> int:
 
     show_logs = not args.progress_only and not args.quiet
     show_progress = not args.quiet
-
     try:
+        _ensure_packager_callable_loaded(append_mode=append_to is not None)
+        from rich.console import Console
+
         console = Console(quiet=args.quiet)
         reporter = RichReporter(
             console,
@@ -154,11 +239,11 @@ def main(argv: list[str] | None = None) -> int:
                 include_unknown=args.include_unknown,
                 reporter=reporter,
             )
-    except DuplicateRunError as exc:
-        if not args.quiet:
-            print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
-        return 1
     except Exception as exc:
+        if append_to and exc.__class__.__name__ == "DuplicateRunError":
+            if not args.quiet:
+                print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
+            return 1
         action = "extend" if append_to else "build"
         if not args.quiet:
             print(f"Failed to {action} .liufs archive: {exc}", file=sys.stderr)
