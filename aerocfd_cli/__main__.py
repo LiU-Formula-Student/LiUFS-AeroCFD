@@ -6,7 +6,6 @@ from pathlib import Path
 import sys
 
 from .reporting import LogLevel, RichReporter
-from .packager import DuplicateRunError, append_run_to_liufs, build_liufs
 
 
 LEGAL_RESOURCE_PACKAGE = "aerocfd_app.resources"
@@ -185,9 +184,13 @@ def main(argv: list[str] | None = None) -> int:
 
     show_logs = not args.progress_only and not args.quiet
     show_progress = not args.quiet
+    duplicate_run_error_type = None
 
     try:
+        from .packager import DuplicateRunError, append_run_to_liufs, build_liufs
         from rich.console import Console
+
+        duplicate_run_error_type = DuplicateRunError
 
         console = Console(quiet=args.quiet)
         reporter = RichReporter(
@@ -220,11 +223,11 @@ def main(argv: list[str] | None = None) -> int:
                 include_unknown=args.include_unknown,
                 reporter=reporter,
             )
-    except DuplicateRunError as exc:
-        if not args.quiet:
-            print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
-        return 1
     except Exception as exc:
+        if duplicate_run_error_type is not None and isinstance(exc, duplicate_run_error_type):
+            if not args.quiet:
+                print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
+            return 1
         action = "extend" if append_to else "build"
         if not args.quiet:
             print(f"Failed to {action} .liufs archive: {exc}", file=sys.stderr)
