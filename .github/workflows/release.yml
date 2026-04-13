@@ -58,10 +58,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          target_branch="${{ github.event.release.target_commitish || 'main' }}"
+          requested_target="${{ github.event.release.target_commitish }}"
+          base_branch="${{ github.event.repository.default_branch }}"
+
+          if [ -n "$requested_target" ] && git ls-remote --exit-code --heads origin "$requested_target" >/dev/null 2>&1; then
+            base_branch="$requested_target"
+          fi
+
+          echo "Using PR base branch: $base_branch"
 
           pr_url=$(gh pr create \
-            --base "$target_branch" \
+            --base "$base_branch" \
             --head "${{ steps.prepare-branch.outputs.branch_name }}" \
             --title "chore(release): stamp version ${{ github.event.release.tag_name }}" \
             --body "Automated version stamping for release ${{ github.event.release.tag_name }}.")
