@@ -1,1 +1,2 @@
 include aerocfd_cli/README.md
+recursive-include aerocfd_app/resources *
