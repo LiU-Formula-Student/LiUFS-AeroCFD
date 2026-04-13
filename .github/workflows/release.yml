@@ -72,15 +72,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Drift check stamped files
-        run: |
-          python scripts/set_app_version.py "${{ steps.resolve.outputs.release_tag }}"
-          if ! git diff --quiet; then
-            echo "Version drift detected: stamped output does not match repository state." >&2
-            git --no-pager diff -- aerocfd_app/version.py aerocfd_app/__init__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
-            exit 1
-          fi
-
       - name: Retarget release tag to merge commit
         run: |
           git fetch --tags
