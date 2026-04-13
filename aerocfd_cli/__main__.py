@@ -13,6 +13,26 @@ DEFAULT_COPYRIGHT = "Copyright (C) 2026 LiU Formula Student"
 DEFAULT_LICENSE_SUMMARY = "GNU General Public License v3.0 only (GPL-3.0-only)"
 
 
+build_liufs = None
+append_run_to_liufs = None
+
+
+def _ensure_packager_callable_loaded(append_mode: bool) -> None:
+    global build_liufs, append_run_to_liufs
+
+    if append_mode:
+        if append_run_to_liufs is None:
+            from .packager import append_run_to_liufs as _append_run_to_liufs
+
+            append_run_to_liufs = _append_run_to_liufs
+        return
+
+    if build_liufs is None:
+        from .packager import build_liufs as _build_liufs
+
+        build_liufs = _build_liufs
+
+
 def _read_legal_resource_text(filename: str) -> str:
     try:
         resource_path = resources.files(LEGAL_RESOURCE_PACKAGE) / filename
@@ -184,13 +204,9 @@ def main(argv: list[str] | None = None) -> int:
 
     show_logs = not args.progress_only and not args.quiet
     show_progress = not args.quiet
-    duplicate_run_error_type = None
-
     try:
-        from .packager import DuplicateRunError, append_run_to_liufs, build_liufs
+        _ensure_packager_callable_loaded(append_mode=append_to is not None)
         from rich.console import Console
-
-        duplicate_run_error_type = DuplicateRunError
 
         console = Console(quiet=args.quiet)
         reporter = RichReporter(
@@ -224,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
                 reporter=reporter,
             )
     except Exception as exc:
-        if duplicate_run_error_type is not None and isinstance(exc, duplicate_run_error_type):
+        if append_to and exc.__class__.__name__ == "DuplicateRunError":
             if not args.quiet:
                 print(f"Failed to extend .liufs archive: {exc}", file=sys.stderr)
             return 1
