@@ -8,7 +8,8 @@ version = "1.0.1"
 description = "Package CFD simulation folders into compressed .liufs archives with video-encoded cutplanes"
 readme = "aerocfd_cli/README.md"
 requires-python = ">=3.12"
-license = "MIT"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 authors = [
     {name = "LiU Formula Student"},
 ]
@@ -62,6 +63,9 @@ Issues = "https://github.com/LiU-Formula-Student/LiUFS-AeroCFD/issues"
 
 [tool.setuptools.packages.find]
 include = ["aerocfd_cli*", "aerocfd_app*"]
+
+[tool.setuptools.package-data]
+aerocfd_app = ["resources/*"]
 
 [tool.black]
 line-length = 100

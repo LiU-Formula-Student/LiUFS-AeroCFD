@@ -4,21 +4,33 @@ A cross-platform desktop application and file format for efficiently storing, sh
 
 ## Table of Contents
 
-- [Motivation](#-motivation)
-- [Key Features](#-key-features)
-- [Concept](#-concept)
-- [`.liufs` File Format](#-liufs-file-format)
-- [Viewer Application](#-viewer-application)
-- [Installation / Usage](#-installation--usage)
-- [Python Package Installation (`aerocfd`)](#-python-package-installation-aerocfd)
-- [Supported Platforms](#-supported-platforms)
-- [Post-Install Smoke Tests](#-post-install-smoke-tests)
-- [Development](#-development)
-- [Build](#-build)
-- [CI/CD](#-cicd)
-- [Storage Impact](#-storage-impact)
-- [Authors](#-authors)
-- [Contributing](#-contributing)
+- [LiU FS Simulation Viewer (`.liufs`)](#liu-fs-simulation-viewer-liufs)
+  - [Table of Contents](#table-of-contents)
+  - [Related Docs](#related-docs)
+  - [🚀 Motivation](#-motivation)
+  - [📦 Key Features](#-key-features)
+    - [Storage \& Compression](#storage--compression)
+    - [Simulation Packaging](#simulation-packaging)
+    - [Viewer Application](#viewer-application)
+  - [🧠 Concept](#-concept)
+  - [📁 `.liufs` File Format](#-liufs-file-format)
+  - [🖥️ Viewer Application](#️-viewer-application)
+    - [Tech Stack](#tech-stack)
+    - [Capabilities](#capabilities)
+  - [📥 Installation / Usage](#-installation--usage)
+    - [No installation required](#no-installation-required)
+  - [📦 Python Package Installation (`aerocfd`)](#-python-package-installation-aerocfd)
+    - [For End Users](#for-end-users)
+    - [For Developers](#for-developers)
+  - [✅ Supported Platforms](#-supported-platforms)
+  - [🧪 Post-Install Smoke Tests](#-post-install-smoke-tests)
+  - [⚙️ Development](#️-development)
+    - [Requirements](#requirements)
+  - [🏗️ Build](#️-build)
+  - [🔄 CI/CD](#-cicd)
+  - [📊 Storage Impact](#-storage-impact)
+  - [👥 Authors](#-authors)
+  - [📄 License](#-license)
 
 ## Related Docs
 
@@ -328,3 +340,10 @@ Observed example:
 ## 👥 Authors
 
 Gustav Johansson (LiU Formula Student) – [GitHub](https://github.com/GustavJ02)
+
+---
+
+## 📄 License
+
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
+See [LICENSE](LICENSE) for the full text.
