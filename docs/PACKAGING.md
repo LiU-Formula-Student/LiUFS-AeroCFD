@@ -16,8 +16,8 @@ AeroCFD/
 ├── pyproject.toml              # Package metadata and build config
 ├── MANIFEST.in                 # Distribution file inclusion rules
 ├── dist/                       # Built distributions
-│   ├── aerocfd-1.1.1-py3-none-any.whl
-│   └── aerocfd-1.1.1.tar.gz
+│   ├── aerocfd-1.1.0-py3-none-any.whl
+│   └── aerocfd-1.1.0.tar.gz
 ├── aerocfd_cli/                # CLI package source
 │   ├── __init__.py
 │   ├── __main__.py
@@ -52,7 +52,7 @@ Artifacts are created in the `dist/` directory.
 
 ```bash
 # Install from local wheel (full runtime)
-pip install "dist/aerocfd-1.1.1-py3-none-any.whl[full]"
+pip install "dist/aerocfd-1.1.0-py3-none-any.whl[full]"
 
 # Test the CLI command
 aerocfd --help
@@ -142,7 +142,7 @@ print(f"Created: {archive}")
 ## Package Metadata
 
 **Name:** `aerocfd`
-**Version:** `1.1.1`
+**Version:** `1.1.0`
 **Python:** `>=3.12`
 **License:** GPL-3.0-only
 **Default dependencies:** none
@@ -212,7 +212,7 @@ pip show aerocfd
 
 If not installed, install from wheel or git:
 ```bash
-pip install /path/to/aerocfd-1.1.1-py3-none-any.whl
+pip install /path/to/aerocfd-1.1.0-py3-none-any.whl
 ```
 
 ### Import Errors After Installation
