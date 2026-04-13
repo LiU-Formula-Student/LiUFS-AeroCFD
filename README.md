@@ -2,6 +2,49 @@
 
 A cross-platform desktop application and file format for efficiently storing, sharing, and visualizing CFD simulation results within LiU Formula Student.
 
+## Table of Contents
+
+- [LiU FS Simulation Viewer (`.liufs`)](#liu-fs-simulation-viewer-liufs)
+  - [Table of Contents](#table-of-contents)
+  - [Related Docs](#related-docs)
+  - [🚀 Motivation](#-motivation)
+  - [📦 Key Features](#-key-features)
+    - [Storage \& Compression](#storage--compression)
+    - [Simulation Packaging](#simulation-packaging)
+    - [Viewer Application](#viewer-application)
+  - [🧠 Concept](#-concept)
+  - [📁 `.liufs` File Format](#-liufs-file-format)
+  - [🖥️ Viewer Application](#️-viewer-application)
+    - [Tech Stack](#tech-stack)
+    - [Capabilities](#capabilities)
+  - [📥 Installation / Usage](#-installation--usage)
+    - [No installation required](#no-installation-required)
+  - [📦 Python Package Installation (`aerocfd`)](#-python-package-installation-aerocfd)
+    - [For End Users](#for-end-users)
+    - [For Developers](#for-developers)
+  - [✅ Supported Platforms](#-supported-platforms)
+  - [🧪 Post-Install Smoke Tests](#-post-install-smoke-tests)
+  - [⚙️ Development](#️-development)
+    - [Requirements](#requirements)
+  - [🏗️ Build](#️-build)
+  - [🔄 CI/CD](#-cicd)
+  - [📊 Storage Impact](#-storage-impact)
+  - [👥 Authors](#-authors)
+  - [📄 License](#-license)
+
+## Related Docs
+
+- [Contributing guide](CONTRIBUTING.md)
+- [App guide](docs/APP_GUIDE.md)
+- [Packaging guide](docs/PACKAGING.md)
+- [Workflow guide](docs/WORKFLOW.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Error handling overview](docs/ERROR_HANDLING.md)
+- [Error handling summary](docs/ERROR_HANDLING_SUMMARY.md)
+- [Error messages reference](docs/ERROR_MESSAGES_REFERENCE.md)
+- [Quick start error handling](docs/QUICK_START_ERROR_HANDLING.md)
+- [CLI README](aerocfd_cli/README.md)
+
 ## 🚀 Motivation
 
 CFD simulations in LiU FS generate **large volumes of images**, especially cutplane sequences. This leads to:
@@ -296,7 +339,7 @@ Observed example:
 
 ## 👥 Authors
 
-LiU Formula Student – Gustav Johansson
+Gustav Johansson (LiU Formula Student) – [GitHub](https://github.com/GustavJ02)
 
 ---
 
