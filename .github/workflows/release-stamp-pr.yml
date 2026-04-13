@@ -1,0 +1,90 @@
+name: Prepare Release Stamping PR
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (for example v1.2.3)"
+        required: true
+        type: string
+      target_branch:
+        description: "Base branch for the stamping PR"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  prepare-stamp-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Resolve release tag and base branch
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            release_tag="${{ github.event.inputs.release_tag }}"
+            requested_target="${{ github.event.inputs.target_branch }}"
+          else
+            release_tag="${{ github.event.release.tag_name }}"
+            requested_target="${{ github.event.release.target_commitish }}"
+          fi
+
+          base_branch="${{ github.event.repository.default_branch }}"
+          if [ -n "$requested_target" ] && git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}.git" "$requested_target" >/dev/null 2>&1; then
+            base_branch="$requested_target"
+          fi
+
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "base_branch=$base_branch" >> "$GITHUB_OUTPUT"
+
+      - name: Check out base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.base_branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stamp app version
+        run: |
+          python scripts/set_app_version.py "${{ steps.resolve.outputs.release_tag }}"
+
+      - name: Commit and push stamping branch
+        id: stamp
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No version changes detected."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          stamp_branch="release/stamp-${{ steps.resolve.outputs.release_tag }}-${{ github.run_id }}-${{ github.run_attempt }}"
+
+          git checkout -B "$stamp_branch"
+          git add aerocfd_app/version.py aerocfd_app/__init__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
+          git commit -m "chore(release): stamp version ${{ steps.resolve.outputs.release_tag }}"
+          git push --force-with-lease origin "HEAD:$stamp_branch"
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$stamp_branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open stamping PR
+        if: steps.stamp.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base "${{ steps.resolve.outputs.base_branch }}" \
+            --head "${{ steps.stamp.outputs.branch_name }}" \
+            --title "chore(release): stamp version ${{ steps.resolve.outputs.release_tag }}" \
+            --body "Automated version stamping PR for release ${{ steps.resolve.outputs.release_tag }}. Merge this PR, then release build/publish runs automatically."
