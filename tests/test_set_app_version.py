@@ -7,7 +7,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.set_app_version import classifier_for_tag, to_pep440, update_release_artifact_references
+from scripts.set_app_version import (
+    classifier_for_tag,
+    to_pep440,
+    update_cli_version_reference,
+    update_release_artifact_references,
+)
 
 
 @pytest.mark.parametrize(
@@ -54,3 +59,11 @@ def test_update_release_artifact_references_updates_wheel_and_sdist_names() -> N
     assert 'aerocfd-2.1.0.tar.gz' in updated
     assert 'aerocfd_cli-0.9.0-py3-none-any.whl' not in updated
     assert 'aerocfd_cli-0.9.0.tar.gz' not in updated
+
+
+def test_update_cli_version_reference_updates_version_string() -> None:
+    source = 'version="aerocfd 1.0b0.post7"'
+
+    updated = update_cli_version_reference(source, "2.1.0")
+
+    assert updated == 'version="aerocfd 2.1.0"'

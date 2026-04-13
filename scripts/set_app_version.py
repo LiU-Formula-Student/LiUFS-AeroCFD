@@ -97,6 +97,15 @@ def update_release_artifact_references(text: str, package_version: str) -> str:
     return text
 
 
+def update_cli_version_reference(text: str, package_version: str) -> str:
+    return re.sub(
+        r'(version\s*=\s*"aerocfd\s+)[^"]+("\s*,?)',
+        rf'\g<1>{package_version}\g<2>',
+        text,
+        count=1,
+    )
+
+
 def main() -> int:
     raw_version = sys.argv[1] if len(sys.argv) > 1 else "dev"
     app_version = sanitize(raw_version)
@@ -128,12 +137,15 @@ def main() -> int:
     )
 
     for relative_path in [
+        "aerocfd_cli/__main__.py",
         "README.md",
         "aerocfd_cli/README.md",
         "docs/PACKAGING.md",
     ]:
         path = root / relative_path
         text = path.read_text(encoding="utf-8")
+        if relative_path == "aerocfd_cli/__main__.py":
+            text = update_cli_version_reference(text, package_version)
         text = update_release_artifact_references(text, package_version)
         if relative_path == "docs/PACKAGING.md":
             text = re.sub(
