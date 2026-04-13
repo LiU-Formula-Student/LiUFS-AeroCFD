@@ -1,136 +1,85 @@
 name: Build and Publish Release
 
 on:
-  release:
+  pull_request:
     types:
-      - published
+      - closed
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (for example v1.2.3)"
+        required: true
+        type: string
+      build_ref:
+        description: "Commit SHA to build from (optional; defaults to main HEAD)"
+        required: false
+        type: string
 
 jobs:
-  prepare-version:
+  prepare-release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/stamp-'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     outputs:
-      build_ref: ${{ steps.set-ref.outputs.build_ref }}
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      build_ref: ${{ steps.resolve.outputs.build_ref }}
 
     steps:
-      - name: Check out repository
+      - name: Resolve release metadata
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            release_tag="${{ github.event.inputs.release_tag }}"
+            if [ -n "${{ github.event.inputs.build_ref }}" ]; then
+              build_ref="${{ github.event.inputs.build_ref }}"
+            else
+              build_ref="${{ github.sha }}"
+            fi
+          else
+            release_tag=$(printf '%s' "${{ github.event.pull_request.title }}" | sed -n 's/^chore(release): stamp version //p')
+            build_ref="${{ github.event.pull_request.merge_commit_sha }}"
+          fi
+
+          if [ -z "$release_tag" ]; then
+            echo "Unable to resolve release tag." >&2
+            exit 1
+          fi
+
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "build_ref=$build_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Check out merge commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.target_commitish || github.ref_name }}
+          ref: ${{ steps.resolve.outputs.build_ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Stamp app version
+      - name: Drift check stamped files
         run: |
-          python scripts/set_app_version.py "${{ github.event.release.tag_name || github.ref_name }}"
-
-      - name: Prepare stamped release branch
-        id: prepare-branch
-        if: github.event_name == 'release'
-        run: |
-          if git diff --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No version changes to commit."
-            exit 0
+          python scripts/set_app_version.py "${{ steps.resolve.outputs.release_tag }}"
+          if ! git diff --quiet; then
+            echo "Version drift detected: stamped output does not match repository state." >&2
+            git --no-pager diff -- aerocfd_app/version.py aerocfd_app/__init__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
+            exit 1
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          stamp_branch="release/stamp-${{ github.event.release.tag_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
-
-          git checkout -B "$stamp_branch"
-          git add aerocfd_app/version.py aerocfd_app/__init__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
-          git commit -m "chore(release): stamp version ${{ github.event.release.tag_name }}"
-          git push --force-with-lease origin "HEAD:$stamp_branch"
-
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "branch_name=$stamp_branch" >> "$GITHUB_OUTPUT"
-
-      - name: Open release stamping PR
-        id: open-pr
-        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          requested_target="${{ github.event.release.target_commitish }}"
-          base_branch="${{ github.event.repository.default_branch }}"
-
-          if [ -n "$requested_target" ] && git ls-remote --exit-code --heads origin "$requested_target" >/dev/null 2>&1; then
-            base_branch="$requested_target"
-          fi
-
-          echo "Using PR base branch: $base_branch"
-
-          pr_url=$(gh pr create \
-            --base "$base_branch" \
-            --head "${{ steps.prepare-branch.outputs.branch_name }}" \
-            --title "chore(release): stamp version ${{ github.event.release.tag_name }}" \
-            --body "Automated version stamping for release ${{ github.event.release.tag_name }}.")
-
-          pr_number=$(gh pr view "$pr_url" --json number --jq '.number')
-          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
-
-      - name: Queue or auto-merge release PR
-        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pr_number="${{ steps.open-pr.outputs.pr_number }}"
-
-          if gh pr merge "$pr_number" --queue; then
-            echo "PR #$pr_number added to merge queue."
-            exit 0
-          fi
-
-          echo "Merge queue add failed, trying auto-merge fallback..."
-          gh pr merge "$pr_number" --auto --merge
-
-      - name: Wait for release stamping PR merge
-        id: wait-merge
-        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pr_number="${{ steps.open-pr.outputs.pr_number }}"
-
-          for _ in $(seq 1 90); do
-            merged_at=$(gh pr view "$pr_number" --json mergedAt --jq '.mergedAt')
-            if [ "$merged_at" != "null" ] && [ -n "$merged_at" ]; then
-              merge_commit=$(gh pr view "$pr_number" --json mergeCommit --jq '.mergeCommit.oid')
-              echo "merge_commit=$merge_commit" >> "$GITHUB_OUTPUT"
-              echo "Release stamping PR merged at $merged_at"
-              exit 0
-            fi
-            sleep 10
-          done
-
-          echo "Timed out waiting for PR #$pr_number to merge." >&2
-          exit 1
-
-      - name: Retarget release tag to merged commit
-        if: github.event_name == 'release' && steps.prepare-branch.outputs.changed == 'true'
+      - name: Retarget release tag to merge commit
         run: |
           git fetch --tags
-          git tag -f "${{ github.event.release.tag_name }}" "${{ steps.wait-merge.outputs.merge_commit }}"
-          git push origin "refs/tags/${{ github.event.release.tag_name }}" --force
-
-      - name: Set build ref output
-        id: set-ref
-        run: |
-          if [ "${{ github.event_name }}" = "release" ] && [ "${{ steps.prepare-branch.outputs.changed }}" = "true" ]; then
-            echo "build_ref=${{ steps.wait-merge.outputs.merge_commit }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "build_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          fi
+          git tag -f "${{ steps.resolve.outputs.release_tag }}" "${{ steps.resolve.outputs.build_ref }}"
+          git push origin "refs/tags/${{ steps.resolve.outputs.release_tag }}" --force
 
   build:
-    needs: prepare-version
+    needs: prepare-release
     strategy:
       fail-fast: false
       matrix:
@@ -156,7 +105,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-version.outputs.build_ref }}
+          ref: ${{ needs.prepare-release.outputs.build_ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -180,14 +129,13 @@ jobs:
 
   build-aerocfd-wheel:
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
-    needs: prepare-version
+    needs: prepare-release
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-version.outputs.build_ref }}
+          ref: ${{ needs.prepare-release.outputs.build_ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -212,7 +160,6 @@ jobs:
   publish-to-pypi:
     runs-on: ubuntu-latest
     needs: build-aerocfd-wheel
-    if: github.event_name == 'release'
     permissions:
       id-token: write  # Required for OIDC trusted publisher
 
@@ -229,10 +176,9 @@ jobs:
   publish-release-assets:
     runs-on: ubuntu-latest
     needs:
-      - prepare-version
+      - prepare-release
       - build
       - build-aerocfd-wheel
-    if: github.event_name == 'release'
     permissions:
       contents: write
 
@@ -240,7 +186,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-version.outputs.build_ref }}
+          ref: ${{ needs.prepare-release.outputs.build_ref }}
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -250,7 +196,7 @@ jobs:
       - name: Attach assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ needs.prepare-release.outputs.release_tag }}
           files: |
             release-assets/liufs-viewer-windows/liufs-viewer-windows.zip
             release-assets/liufs-viewer-macos/liufs-viewer-macos.zip
