@@ -5,6 +5,7 @@
 /LICENSE @LiU-Formula-Student/management
 /COPYRIGHT @LiU-Formula-Student/management
 /CONTRIBUTING* @LiU-Formula-Student/management
+/.github/CODEOWNERS @LiU-Formula-Student/management
 
 # All other files owned by Internal Systems team
 * @LiU-Formula-Student/internal-systems
