@@ -3,4 +3,4 @@ LiU FS Simulation Viewer Application
 A cross-platform desktop application for viewing .liufs simulation files
 """
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
