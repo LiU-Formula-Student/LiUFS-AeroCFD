@@ -34,7 +34,7 @@ from ..core.diagnostics import collect_diagnostics
 class ViewerWindow(QMainWindow):
     """Main viewer window for .liufs files."""
 
-    LICENSE_NAME = "MIT"
+    LICENSE_NAME = "GPL-3.0-only"
 
     @staticmethod
     def _project_root() -> Path:
