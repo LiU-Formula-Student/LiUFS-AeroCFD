@@ -4,12 +4,18 @@ import sys
 
 project_root = Path(SPECPATH)
 
+legal_resource_dir = project_root / 'aerocfd_app' / 'resources'
+legal_datas = [
+	(str(legal_resource_dir / 'LICENSE'), 'aerocfd_app/resources'),
+	(str(legal_resource_dir / 'COPYRIGHT'), 'aerocfd_app/resources'),
+]
+
 
 a = Analysis(
 	['viewer_entry.py'],
 	pathex=[str(project_root)],
 	binaries=[],
-	datas=[],
+	datas=legal_datas,
 	hiddenimports=[],
 	hookspath=[],
 	hooksconfig={},
