@@ -42,12 +42,12 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          stamp_branch="release/stamp-${{ github.event.release.tag_name }}-${{ github.run_id }}"
+          stamp_branch="release/stamp-${{ github.event.release.tag_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
 
-          git checkout -b "$stamp_branch"
+          git checkout -B "$stamp_branch"
           git add aerocfd_app/version.py aerocfd_app/__init__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
           git commit -m "chore(release): stamp version ${{ github.event.release.tag_name }}"
-          git push origin "HEAD:$stamp_branch"
+          git push --force-with-lease origin "HEAD:$stamp_branch"
 
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "branch_name=$stamp_branch" >> "$GITHUB_OUTPUT"
