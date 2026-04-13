@@ -21,6 +21,17 @@ def _block_rich_imports(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(builtins, "__import__", blocked_import)
 
 
+def _block_cv2_imports(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "cv2":
+            raise ModuleNotFoundError("No module named 'cv2'")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+
 def test_license_flag_works_without_rich_and_without_source(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _block_rich_imports(monkeypatch)
     sys.modules.pop("aerocfd_cli.__main__", None)
@@ -33,6 +44,35 @@ def test_license_flag_works_without_rich_and_without_source(monkeypatch: pytest.
     assert "GPL-3.0-only" in captured.out
     assert "Use --license-full to show the full text." in captured.out
     assert captured.err == ""
+
+
+def test_main_prints_license_when_cv2_missing(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _block_cv2_imports(monkeypatch)
+    sys.modules.pop("aerocfd_cli.packager", None)
+    sys.modules.pop("aerocfd_cli.__main__", None)
+
+    cli_main = importlib.import_module("aerocfd_cli.__main__")
+
+    exit_code = cli_main.main(["--license"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "GPL-3.0-only" in captured.out
+
+
+def test_main_prints_version_when_cv2_missing(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _block_cv2_imports(monkeypatch)
+    sys.modules.pop("aerocfd_cli.packager", None)
+    sys.modules.pop("aerocfd_cli.__main__", None)
+
+    cli_main = importlib.import_module("aerocfd_cli.__main__")
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main.main(["--version"])
+
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert captured.out.startswith("aerocfd ")
 
 
 def test_license_full_flag_prints_full_text(capsys: pytest.CaptureFixture[str]) -> None:
