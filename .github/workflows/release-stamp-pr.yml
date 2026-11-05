@@ -44,12 +44,12 @@ jobs:
           echo "base_branch=$base_branch" >> "$GITHUB_OUTPUT"
 
       - name: Check out base branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ steps.resolve.outputs.base_branch }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -71,7 +71,7 @@ jobs:
           stamp_branch="release/stamp-${{ steps.resolve.outputs.release_tag }}-${{ github.run_id }}-${{ github.run_attempt }}"
 
           git checkout -B "$stamp_branch"
-          git add aerocfd_app/version.py aerocfd_app/__init__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
+          git add aerocfd_app/version.py aerocfd_app/__init__.py aerocfd_cli/__main__.py pyproject.toml README.md aerocfd_cli/README.md docs/PACKAGING.md
           git commit -m "chore(release): stamp version ${{ steps.resolve.outputs.release_tag }}"
           git push --force-with-lease origin "HEAD:$stamp_branch"
 
